@@ -51,7 +51,7 @@ Ask questions about your infrastructure, pipe in data, get answers.
 			printVersion()
 			return
 		}
-		_ = cmd.Help()
+		defaultToAsk(cmd, args)
 	},
 }
 
@@ -71,6 +71,17 @@ func printVersion() {
 	fmt.Printf("  Built:      %s\n", BuildDate)
 	fmt.Printf("  Go version: %s\n", runtime.Version())
 	fmt.Printf("  OS/Arch:    %s/%s\n", runtime.GOOS, runtime.GOARCH)
+}
+
+// defaultToAsk delegates to the "ask" subcommand when no subcommand is given.
+// Defined here (not inline) to break the init-cycle between rootCmd and runAsk.
+func defaultToAsk(cmd *cobra.Command, args []string) {
+	askCmd, _, _ := cmd.Find([]string{"ask"})
+	if askCmd != nil && askCmd.Run != nil {
+		askCmd.Run(askCmd, args)
+		return
+	}
+	_ = cmd.Help()
 }
 
 // Execute runs the root command

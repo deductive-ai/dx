@@ -31,7 +31,7 @@ Running `dx ask` on a fresh install auto-bootstraps: prompts for endpoint URL, t
 
 ### dx ask [question]
 
-Primary command. Sends a question to Deductive and streams the answer.
+Primary command. Sends a question to Deductive and streams the answer. Running bare `dx` with no subcommand is equivalent to `dx ask` (interactive mode).
 
 ```bash
 # One-shot question
@@ -68,6 +68,7 @@ dx ask --timeout 60 "long analysis"
 | Command | Description |
 |---------|-------------|
 | `/upload <path>` | Attach a text file to the current session |
+| `/new` | Start a fresh session |
 | `/resume` | List recent sessions and switch to one |
 | `/help` | Show available commands |
 | `exit` | End the session |

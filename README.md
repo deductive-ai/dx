@@ -37,13 +37,37 @@ dx ask "what services are unhealthy right now?"
 kubectl get pods -A | dx ask "which pods are in trouble?"
 
 # Interactive session (multi-turn)
-dx ask
+dx
+```
+
+### Example session
+
+```
+$ dx
+Creating session...
+Endpoint: https://app.deductive.ai | Session: a1b2c3d4
+Type your questions. Use /help for commands. Press Ctrl+D to exit.
+
+dx> what pods are failing in production?
+Based on the current cluster state, I found 3 pods in CrashLoopBackOff...
+
+dx> /upload ./thread-dump.txt
+Uploading thread-dump.txt... ✓
+
+dx> analyze this thread dump for deadlocks
+
+dx> /new
+Creating session...
+Endpoint: https://app.deductive.ai | Session: e5f6g7h8
+
+dx> what's the p99 latency on the payments service?
 ```
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
+| `dx` | Start an interactive session (same as `dx ask`) |
 | `dx ask` | Ask Deductive a question (setup on first use) |
 | `dx auth` | Re-authenticate |
 | `dx config` | View or change settings |
