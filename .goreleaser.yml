@@ -42,6 +42,8 @@ brews:
   - repository:
       owner: deductive-ai
       name: homebrew-dx
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    skip_upload: auto
     homepage: https://deductive.ai
     description: CLI for Deductive AI — ask questions about your infrastructure
     license: Apache-2.0
