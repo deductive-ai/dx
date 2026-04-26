@@ -3,11 +3,21 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
+	"github.com/deductive-ai/dx/internal/api"
 	"github.com/deductive-ai/dx/internal/color"
 	"github.com/deductive-ai/dx/internal/config"
 	"github.com/deductive-ai/dx/internal/session"
 	"github.com/spf13/cobra"
+)
+
+var (
+	createEndpointFlag string
+	createEditorFlag   string
+	createApiKeyFlag   string
+	createAuthModeFlag string
+	createNoValidate   bool
 )
 
 var profileCmd = &cobra.Command{
@@ -21,9 +31,25 @@ or switch the default with dx profile use.
 
 Examples:
   dx profile                          # List all profiles
+  dx profile create staging --endpoint=https://staging.deductive.ai --api-key=dak_xxx
   dx profile use staging              # Switch active profile
   dx profile delete --profile=staging # Delete a profile`,
 	Run: runProfileList,
+}
+
+var profileCreateCmd = &cobra.Command{
+	Use:   "create <name>",
+	Short: "Create or update a profile",
+	Long: `Create a new profile with the given endpoint and authentication.
+
+If the profile already exists, its settings are updated.
+
+Examples:
+  dx profile create staging --endpoint=https://staging.deductive.ai --api-key=dak_xxxxx
+  dx profile create staging --endpoint=https://staging.deductive.ai --auth-mode=oauth
+  dx profile create local --endpoint=http://localhost:8081 --api-key=dak_xxxxx --no-validate`,
+	Args: cobra.ExactArgs(1),
+	Run:  runProfileCreate,
 }
 
 var profileDeleteCmd = &cobra.Command{
@@ -55,8 +81,16 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(profileCmd)
+	profileCmd.AddCommand(profileCreateCmd)
 	profileCmd.AddCommand(profileDeleteCmd)
 	profileCmd.AddCommand(profileUseCmd)
+
+	profileCreateCmd.Flags().StringVarP(&createEndpointFlag, "endpoint", "e", "", "Deductive AI endpoint URL (required)")
+	profileCreateCmd.Flags().StringVar(&createApiKeyFlag, "api-key", "", "API key (starts with dak_)")
+	profileCreateCmd.Flags().StringVar(&createAuthModeFlag, "auth-mode", "", "Authentication method: oauth or apikey")
+	profileCreateCmd.Flags().StringVar(&createEditorFlag, "editor", "", "Preferred text editor")
+	profileCreateCmd.Flags().BoolVar(&createNoValidate, "no-validate", false, "Skip endpoint connectivity check")
+	_ = profileCreateCmd.MarkFlagRequired("endpoint")
 }
 
 func runProfileList(cmd *cobra.Command, args []string) {
@@ -121,7 +155,7 @@ func runProfileUse(cmd *cobra.Command, args []string) {
 
 	if _, err := config.Load(profile); err != nil {
 		fmt.Fprintf(os.Stderr, "%s Profile '%s' not found.\n", color.Error("✗"), profile)
-		fmt.Fprintf(os.Stderr, "Run %s to set it up.\n", color.Command("dx ask --profile="+profile))
+		fmt.Fprintf(os.Stderr, "Run %s to set it up.\n", color.Command("dx profile create "+profile+" --endpoint=..."))
 		os.Exit(1)
 	}
 
@@ -131,4 +165,78 @@ func runProfileUse(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Printf("%s Active profile set to '%s'\n", color.Success("✓"), profile)
+}
+
+func runProfileCreate(cmd *cobra.Command, args []string) {
+	profile := args[0]
+
+	cfg, err := config.Load(profile)
+	if err != nil {
+		cfg = &config.Config{}
+	}
+
+	endpoint := createEndpointFlag
+	if !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
+		endpoint = "https://" + endpoint
+	}
+	endpoint = strings.TrimSuffix(endpoint, "/")
+
+	if !createNoValidate {
+		fmt.Printf("Testing connection to %s... ", endpoint)
+		if err := api.Ping(endpoint); err != nil {
+			fmt.Println(color.Error("✗"))
+			fmt.Fprintf(os.Stderr, "Cannot reach endpoint: %v\n", err)
+			fmt.Fprintln(os.Stderr, "Use --no-validate to skip this check.")
+			os.Exit(1)
+		}
+		fmt.Println(color.Success("OK"))
+	}
+
+	cfg.Endpoint = endpoint
+
+	if createApiKeyFlag != "" && createAuthModeFlag == "" {
+		createAuthModeFlag = "apikey"
+	}
+
+	authMode := strings.ToLower(strings.TrimSpace(createAuthModeFlag))
+	if authMode != "" && authMode != "oauth" && authMode != "apikey" {
+		fmt.Fprintf(os.Stderr, "Error: --auth-mode must be oauth or apikey (got %q)\n", createAuthModeFlag)
+		os.Exit(1)
+	}
+	if authMode != "" {
+		cfg.AuthMethod = authMode
+	}
+
+	if createEditorFlag != "" {
+		cfg.Editor = createEditorFlag
+	}
+
+	if err := config.Save(cfg, profile); err != nil {
+		fmt.Fprintf(os.Stderr, "Error saving profile: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("%s Profile '%s' saved (endpoint: %s)\n", color.Success("✓"), profile, endpoint)
+
+	if createApiKeyFlag != "" {
+		client := api.NewClientWithEndpoint(cfg.Endpoint)
+		if err := authenticateWithAPIKey(client, profile, createApiKeyFlag); err != nil {
+			fmt.Fprintf(os.Stderr, "Error authenticating: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if authMode == "oauth" {
+		client := api.NewClientWithEndpoint(cfg.Endpoint)
+		if err := authenticateWithOAuth(client, profile); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if cfg.AuthMethod == "" || !cfg.IsAuthenticated() {
+		fmt.Printf("Run %s to authenticate.\n", color.Command("dx auth --profile="+profile))
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/deductive-ai/dx/internal/api"
@@ -143,6 +144,8 @@ func runBootstrap(profile string) *config.Config {
 		os.Exit(1)
 	}
 
+	tryInstallCompletions()
+
 	fmt.Println()
 	fmt.Printf("  %s Ready!\n", color.Success("✓"))
 	fmt.Println()
@@ -200,10 +203,22 @@ func bootstrapWithAPIKey(apiKey string, profile string, reader *bufio.Reader) *c
 		os.Exit(1)
 	}
 
+	tryInstallCompletions()
+
 	fmt.Println()
 	fmt.Printf("  %s Ready!\n", color.Success("✓"))
 	fmt.Println()
 	return cfg
+}
+
+func tryInstallCompletions() {
+	shell := filepath.Base(os.Getenv("SHELL"))
+	switch shell {
+	case "bash", "zsh", "fish":
+		if err := InstallCompletions(rootCmd, shell); err != nil {
+			fmt.Fprintf(os.Stderr, "  Note: could not install shell completions: %v\n", err)
+		}
+	}
 }
 
 func isInteractiveTerminal() bool {
