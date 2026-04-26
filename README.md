@@ -14,8 +14,14 @@ brew install dx
 ### One-line install
 
 ```bash
-curl -fsSL https://app.deductive.ai/cli/install | bash
+curl -fsSL https://raw.githubusercontent.com/deductive-ai/dx/main/install.sh | bash
 ```
+
+> **Private repo?** While the repo is private, use a GitHub token:
+> ```bash
+> curl -fsSL -H "Authorization: token $GITHUB_TOKEN" \
+>   https://raw.githubusercontent.com/deductive-ai/dx/main/install.sh | bash
+> ```
 
 ### GitHub Releases
 
@@ -26,6 +32,8 @@ Download the latest binary for your platform from [Releases](https://github.com/
 ```bash
 go install github.com/deductive-ai/dx@latest
 ```
+
+> While the repo is private, set `GOPRIVATE=github.com/deductive-ai/*` first.
 
 ## Quick start
 
@@ -72,4 +80,4 @@ dx ask "test query" --profile=staging
 
 ## License
 
-Copyright (c) 2024 Deductive AI, Inc. All rights reserved.
+Copyright (c) 2025 Deductive AI, Inc. All rights reserved.
