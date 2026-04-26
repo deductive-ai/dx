@@ -24,26 +24,39 @@ import (
 // State represents the session state stored in ~/.dx/sessions/<session-id>
 type State struct {
 	SessionID      string             `json:"session_id"`
-	Profile        string             `json:"profile"`            // Which profile created this session
+	Profile        string             `json:"profile"`
 	URL            string             `json:"url"`
 	PresignedURLs  []api.PresignedURL `json:"presigned_urls"`
 	CreatedAt      time.Time          `json:"created_at"`
+	LastMessageAt  time.Time          `json:"last_message_at"`
 	URLsUsed       int                `json:"urls_used"`
-	RoleSent       bool               `json:"role_sent"`          // Track if role message was sent
-	LastHookOutput string             `json:"last_hook_output"`   // For hook diff comparison
+	RoleSent       bool               `json:"role_sent"`
+	LastHookOutput string             `json:"last_hook_output"`
 }
 
 // encryptedState is the on-disk format with encrypted sensitive data
 type encryptedState struct {
-	SessionID            string    `json:"session_id"`
-	Profile              string    `json:"profile"`
-	URL                  string    `json:"url"`
-	EncryptedURLs        string    `json:"encrypted_urls,omitempty"`  // Encrypted presigned URLs
-	PresignedURLs        []api.PresignedURL `json:"presigned_urls,omitempty"` // Legacy unencrypted
-	CreatedAt            time.Time `json:"created_at"`
-	URLsUsed             int       `json:"urls_used"`
-	RoleSent             bool      `json:"role_sent"`
-	LastHookOutput       string    `json:"last_hook_output"`
+	SessionID            string             `json:"session_id"`
+	Profile              string             `json:"profile"`
+	URL                  string             `json:"url"`
+	EncryptedURLs        string             `json:"encrypted_urls,omitempty"`
+	PresignedURLs        []api.PresignedURL `json:"presigned_urls,omitempty"`
+	CreatedAt            time.Time          `json:"created_at"`
+	LastMessageAt        time.Time          `json:"last_message_at"`
+	URLsUsed             int                `json:"urls_used"`
+	RoleSent             bool               `json:"role_sent"`
+	LastHookOutput       string             `json:"last_hook_output"`
+}
+
+const DefaultSessionTTL = 30 * time.Minute
+
+// IsExpired returns true if the session has been idle longer than DefaultSessionTTL.
+func (s *State) IsExpired() bool {
+	ref := s.LastMessageAt
+	if ref.IsZero() {
+		ref = s.CreatedAt
+	}
+	return ref.Add(DefaultSessionTTL).Before(time.Now())
 }
 
 // Load reads the session state for a specific session ID
@@ -71,6 +84,7 @@ func Load(sessionID string) (*State, error) {
 		Profile:        enc.Profile,
 		URL:            enc.URL,
 		CreatedAt:      enc.CreatedAt,
+		LastMessageAt:  enc.LastMessageAt,
 		URLsUsed:       enc.URLsUsed,
 		RoleSent:       enc.RoleSent,
 		LastHookOutput: enc.LastHookOutput,
@@ -121,6 +135,7 @@ func Save(state *State) error {
 		URL:            state.URL,
 		EncryptedURLs:  encryptedURLs,
 		CreatedAt:      state.CreatedAt,
+		LastMessageAt:  state.LastMessageAt,
 		URLsUsed:       state.URLsUsed,
 		RoleSent:       state.RoleSent,
 		LastHookOutput: state.LastHookOutput,

@@ -293,7 +293,7 @@ func runConfig(cmd *cobra.Command, args []string) {
 			}
 		default:
 			if profile == config.DefaultProfile {
-				fmt.Println("Run 'dx auth' to authenticate (OAuth) or set auth mode and API key via 'dx config'.")
+				fmt.Println("Run 'dx auth' to authenticate (OAuth) or set API key via 'dx config --api-key=<key>'.")
 			} else {
 				fmt.Printf("Run 'dx auth --profile=%s' or 'dx config --profile=%s --api-key=<key>'.\n", profile, profile)
 			}
@@ -310,7 +310,7 @@ func runConfigList(cmd *cobra.Command, args []string) {
 
 	if len(profiles) == 0 {
 		fmt.Println("No profiles configured.")
-		fmt.Println("Run 'dx config' to create the default profile.")
+		fmt.Println("Run 'dx ask' to get started.")
 		return
 	}
 
@@ -361,11 +361,4 @@ func runConfigDelete(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Printf("✓ Deleted profile '%s'\n", profile)
-}
-
-func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
 }

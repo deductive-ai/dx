@@ -17,7 +17,6 @@ import (
 	"path/filepath"
 
 	"github.com/deductive-ai/dx/internal/api"
-	"github.com/deductive-ai/dx/internal/config"
 	"github.com/deductive-ai/dx/internal/logging"
 	"github.com/deductive-ai/dx/internal/session"
 	"github.com/deductive-ai/dx/internal/telemetry"
@@ -64,8 +63,8 @@ Examples:
 
   # Pipe from stdin
   kubectl logs deploy/api | dx upload --stdin --name=api.log`,
-	GroupID: "usage",
-	Run:     runUpload,
+	Hidden: true,
+	Run:    runUpload,
 	PreRunE: func(cmd *cobra.Command, args []string) error {
 		if !uploadStdinFlag && uploadFileFlag == "" {
 			return fmt.Errorf("required flag \"file\" not set (use -f or --stdin)")
@@ -90,17 +89,10 @@ func runUpload(cmd *cobra.Command, args []string) {
 	)
 	defer span.End()
 
-	// Check config and auth
-	cfg, err := config.Load(profile)
-	if err != nil {
-		if profile == config.DefaultProfile {
-			fmt.Fprintln(os.Stderr, "Error: No configuration found. Run 'dx config' first.")
-		} else {
-			fmt.Fprintf(os.Stderr, "Error: Profile '%s' not found. Run 'dx config --profile=%s' first.\n", profile, profile)
-		}
-		os.Exit(1)
-	}
+	// Check config and auth (env vars → config file → interactive bootstrap)
+	cfg := LoadOrBootstrap(profile)
 
+	var err error
 	cfg, err = EnsureAuth(cfg, profile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

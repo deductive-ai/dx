@@ -122,7 +122,7 @@ Examples:
 }
 
 func init() {
-	sessionCmd.GroupID = "usage"
+	sessionCmd.Hidden = true
 	rootCmd.AddCommand(sessionCmd)
 
 	// Hidden: create-session and resume-session are power-user commands
@@ -254,9 +254,9 @@ func runCreateSession(cmd *cobra.Command, args []string) {
 	cfg, err := config.Load(profile)
 	if err != nil {
 		if profile == config.DefaultProfile {
-			fmt.Fprintln(os.Stderr, "Error: No configuration found. Run 'dx config' first.")
+			fmt.Fprintln(os.Stderr, "Error: No configuration found. Run 'dx ask' to get started.")
 		} else {
-			fmt.Fprintf(os.Stderr, "Error: Profile '%s' not found. Run 'dx config --profile=%s' first.\n", profile, profile)
+			fmt.Fprintf(os.Stderr, "Error: Profile '%s' not found. Run 'dx ask --profile=%s' to set it up.\n", profile, profile)
 		}
 		os.Exit(1)
 	}
@@ -328,9 +328,9 @@ func runResumeSession(cmd *cobra.Command, args []string) {
 	cfg, err := config.Load(profile)
 	if err != nil {
 		if profile == config.DefaultProfile {
-			fmt.Fprintln(os.Stderr, "Error: No configuration found. Run 'dx config' first.")
+			fmt.Fprintln(os.Stderr, "Error: No configuration found. Run 'dx ask' to get started.")
 		} else {
-			fmt.Fprintf(os.Stderr, "Error: Profile '%s' not found. Run 'dx config --profile=%s' first.\n", profile, profile)
+			fmt.Fprintf(os.Stderr, "Error: Profile '%s' not found. Run 'dx ask --profile=%s' to set it up.\n", profile, profile)
 		}
 		os.Exit(1)
 	}

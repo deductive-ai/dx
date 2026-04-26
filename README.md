@@ -30,31 +30,24 @@ go install github.com/deductive-ai/dx@latest
 ## Quick start
 
 ```bash
-# One-command setup — configure endpoint, authenticate, install completions
-dx init
-
-# Ask a question
+# Just ask — setup runs automatically on first use
 dx ask "what services are unhealthy right now?"
 
 # Pipe data for analysis
 kubectl get pods -A | dx ask "which pods are in trouble?"
 
-# Upload files for context
-dx upload -f /tmp/incident.log
-dx ask "what caused the errors in the uploaded log?"
+# For CI / scripts, use environment variables
+DX_API_KEY=dak_xxx DX_ENDPOINT=https://acme.deductive.ai dx ask "status?"
 ```
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `dx init` | First-time setup wizard |
-| `dx ask` | Ask Deductive a question |
-| `dx login` | Re-authenticate |
-| `dx status` | Connection and session status |
-| `dx upload` | Upload files for context |
-| `dx session list` | List sessions |
-| `dx version` | Print version |
+| `dx ask` | Ask Deductive a question (setup on first use) |
+| `dx auth` | Re-authenticate |
+| `dx profile` | List and manage profiles |
+| `dx upgrade` | Upgrade to the latest version |
 
 Run `dx --help` for full details.
 
@@ -63,9 +56,6 @@ Run `dx --help` for full details.
 Configuration is stored in `~/.dx/profiles/<profile>/config` (TOML format).
 
 ```bash
-# Set up a second profile (e.g. staging)
-dx init --profile=staging
-
 # Use a specific profile
 dx ask "test query" --profile=staging
 ```

@@ -27,7 +27,7 @@ func EnsureAuth(cfg *config.Config, profile string) (*config.Config, error) {
 	}
 
 	if !cfg.CanRefresh() {
-		return nil, fmt.Errorf("not authenticated. Run 'dx auth' first")
+		return nil, fmt.Errorf("not authenticated. Run 'dx auth' to re-authenticate")
 	}
 
 	client := api.NewClientWithEndpoint(cfg.Endpoint)
