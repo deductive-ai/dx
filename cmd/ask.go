@@ -377,7 +377,7 @@ func runInteractiveAsk(cfg *config.Config, profile string, preState *session.Sta
 	state, _ := ensureSession(client, profile, preState, os.Stdout)
 
 	fmt.Printf("Session: %s\n", color.SessionID(state.SessionID))
-	fmt.Printf("%s\n", color.Muted("Type your questions. Use up/down arrows for history. Press Ctrl+D to exit."))
+	fmt.Printf("%s\n", color.Muted("Type your questions. Use /help for commands. Press Ctrl+D to exit."))
 	fmt.Println()
 
 	// Set up liner for line editing and history
@@ -433,6 +433,11 @@ func runInteractiveAsk(cfg *config.Config, profile string, preState *session.Sta
 		// Handle special commands
 		if question == "exit" || question == "quit" {
 			break
+		}
+
+		if strings.HasPrefix(question, "/") {
+			handleSlashCommand(question, cfg, state)
+			continue
 		}
 
 		// Start streaming BEFORE sending message to avoid race condition
@@ -847,6 +852,39 @@ func formatToolOutput(to *ToolOutput, state *OutputState) {
 	}
 
 	state.inToolBlock = false
+}
+
+func handleSlashCommand(input string, cfg *config.Config, state *session.State) {
+	parts := strings.Fields(input)
+	cmd := parts[0]
+
+	switch cmd {
+	case "/upload":
+		if len(parts) < 2 {
+			fmt.Println(color.Error("Usage: /upload <file-path>"))
+			return
+		}
+		path := parts[1]
+		fmt.Printf("Uploading %s... ", filepath.Base(path))
+		if err := uploadFileToSession(cfg, state, path); err != nil {
+			fmt.Println(color.Error("✗"))
+			fmt.Fprintf(os.Stderr, "  %v\n", err)
+			return
+		}
+		fmt.Println(color.Success("✓"))
+		fmt.Printf("  Upload slots remaining: %d\n", state.GetAvailableURLCount())
+
+	case "/help":
+		fmt.Println()
+		fmt.Println("  Available commands:")
+		fmt.Printf("    %s   Attach a text file to the session\n", color.Command("/upload <path>"))
+		fmt.Printf("    %s              Show this help\n", color.Command("/help"))
+		fmt.Printf("    %s              End the session\n", color.Command("exit"))
+		fmt.Println()
+
+	default:
+		fmt.Printf("%s Unknown command: %s (type /help for available commands)\n", color.Error("✗"), cmd)
+	}
 }
 
 // formatProgressReport formats a progress report with a left border.

@@ -64,6 +64,14 @@ dx ask --timeout 60 "long analysis"
 
 **Piped input:** when stdin is not a TTY, dx reads it, uploads as context, then opens `/dev/tty` for interactive follow-ups (or runs one-shot if a question argument is provided).
 
+**Interactive commands (inside `dx ask`):**
+
+| Command | Description |
+|---------|-------------|
+| `/upload <path>` | Attach a text file to the current session |
+| `/help` | Show available commands |
+| `exit` | End the session |
+
 ### dx profile
 
 Manage named profiles (each with its own endpoint, auth, sessions).
@@ -72,77 +80,30 @@ Manage named profiles (each with its own endpoint, auth, sessions).
 # List profiles (* marks active)
 dx profile
 
+# Create a profile with API key auth
+dx profile create staging --endpoint=https://staging.deductive.ai --api-key=dak_xxxxx
+
+# Create a profile with OAuth
+dx profile create staging --endpoint=https://staging.deductive.ai --auth-mode=oauth
+
+# Skip endpoint validation (e.g. local dev)
+dx profile create local --endpoint=http://localhost:8081 --api-key=dak_xxxxx --no-validate
+
 # Switch active profile
 dx profile use staging
 
 # Delete a profile
-dx profile delete old-env
+dx profile delete --profile=staging
 ```
 
-**Profile precedence:** `--profile` flag > `DX_PROFILE` env var > `~/.dx/active_profile` file > `"default"`
-
-### dx config
-
-Configure endpoint and authentication for the current profile.
-
-```bash
-# Interactive setup
-dx config
-
-# Non-interactive
-dx config --endpoint=https://acme.deductive.ai --api-key=dak_xxxxx
-
-# OAuth mode
-dx config --endpoint=https://acme.deductive.ai --auth-mode=oauth
-
-# List all profiles
-dx config list
-
-# Delete a profile
-dx config delete --profile=old
-```
-
-**Flags:**
-- `--endpoint`, `-e` -- Deductive endpoint URL
+**`dx profile create` flags:**
+- `--endpoint`, `-e` -- Deductive endpoint URL (required)
 - `--api-key` -- API key (implies apikey auth mode)
 - `--auth-mode` -- `oauth` or `apikey`
+- `--editor` -- preferred text editor
 - `--no-validate` -- skip endpoint connectivity check
 
-### dx upload
-
-Upload files or stdin as context for the current session.
-
-```bash
-# Upload a file
-dx upload -f /path/to/logs.txt
-
-# Upload a directory recursively
-dx upload -f ./configs -r
-
-# Upload from stdin
-some-command | dx upload --stdin --name output.txt
-```
-
-**Flags:**
-- `-f`, `--file` -- file or directory path
-- `-r`, `--recursive` -- upload directory contents
-- `--stdin` -- read from stdin
-- `--name` -- filename for stdin content (default: `stdin.txt`)
-
-### dx session
-
-Manage conversation sessions.
-
-```bash
-# List sessions for current profile
-dx session list
-
-# Delete a specific session
-dx session delete <id>
-
-# Clear all sessions for current profile
-dx session clear
-```
+**Profile precedence:** `--profile` flag > `DX_PROFILE` env var > `~/.dx/active_profile` file > `"default"`
 
 ### dx auth
 
@@ -179,15 +140,6 @@ dx skill print
 - If `.claude/` exists in cwd: writes to `~/.claude/skills/dx/SKILL.md`
 - If `.cursor/` exists in cwd: writes to `.cursor/skills/dx/SKILL.md`
 - Default: writes to `.cursor/skills/dx/SKILL.md`
-
-### dx status
-
-Show current profile, endpoint, auth state, and session info.
-
-```bash
-dx status
-dx status --json
-```
 
 ## Global flags
 
@@ -237,11 +189,16 @@ export DX_ENDPOINT=https://acme.deductive.ai
 dx ask "nightly health check -- any anomalies in the last 24h?"
 ```
 
-### Attach files then ask
+### Attach a file and ask
 
 ```bash
-dx upload -f ./thread-dump.txt
-dx ask "analyze this thread dump for deadlocks"
+# Pipe a file as context
+cat ./thread-dump.txt | dx ask "analyze this thread dump for deadlocks"
+
+# Or in interactive mode, use /upload
+dx ask
+dx> /upload ./thread-dump.txt
+dx> analyze this thread dump for deadlocks
 ```
 
 ## File layout
