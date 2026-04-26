@@ -27,8 +27,7 @@ main() {
 
     if [ -z "$version" ]; then
         echo "Error: could not determine latest version." >&2
-        echo "If the repo is private, set GITHUB_TOKEN and retry:" >&2
-        echo "  curl -H \"Authorization: token \$GITHUB_TOKEN\" ..." >&2
+        echo "Check https://github.com/${REPO}/releases for available versions." >&2
         exit 1
     fi
 
