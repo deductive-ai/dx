@@ -16,7 +16,6 @@ import (
 	"github.com/deductive-ai/dx/internal/api"
 	"github.com/deductive-ai/dx/internal/color"
 	"github.com/deductive-ai/dx/internal/config"
-	"github.com/deductive-ai/dx/internal/hook"
 	"github.com/deductive-ai/dx/internal/logging"
 	"github.com/deductive-ai/dx/internal/render"
 	"github.com/deductive-ai/dx/internal/session"
@@ -54,13 +53,6 @@ Piped input:
 Piped output:
   When stdout is piped (e.g. to jq), status messages are automatically
   redirected to stderr so only the answer appears on stdout.
-
-Role and Hooks:
-  If you have configured a role (via 'dx set-role'), it will be sent
-  automatically as the first message in the session.
-  
-  Any registered hooks (via 'dx hook add') will run on each message,
-  with their output included in <appendix> tags when it changes.
 
 Examples:
   dx ask "analyze the uploaded logs"
@@ -130,8 +122,8 @@ func ensureSession(client *api.Client, profile string, preState *session.State, 
 		PresignedURLs: resp.PresignedURLs,
 		CreatedAt:     time.Now(),
 	}
-	session.Save(state)
-	session.SetCurrentSessionID(state.SessionID, profile)
+	_ = session.Save(state)
+	_ = session.SetCurrentSessionID(state.SessionID, profile)
 	logging.Debug("Session created", "id", resp.SessionID, "profile", profile)
 	return state, true
 }
@@ -173,32 +165,26 @@ func runAsk(cmd *cobra.Command, args []string) {
 		}
 
 		existingState, _ := session.Load(resolvedID)
-		roleSent := false
-		lastHookOutput := ""
 		createdAt := time.Now()
 		if existingState != nil {
-			roleSent = existingState.RoleSent
-			lastHookOutput = existingState.LastHookOutput
 			if !existingState.CreatedAt.IsZero() {
 				createdAt = existingState.CreatedAt
 			}
 		}
 
 		explicitState = &session.State{
-			SessionID:      resp.SessionID,
-			Profile:        profile,
-			URL:            resp.URL,
-			PresignedURLs:  resp.PresignedURLs,
-			CreatedAt:      createdAt,
-			RoleSent:       roleSent,
-			LastHookOutput: lastHookOutput,
+			SessionID:     resp.SessionID,
+			Profile:       profile,
+			URL:           resp.URL,
+			PresignedURLs: resp.PresignedURLs,
+			CreatedAt:     createdAt,
 		}
-		session.Save(explicitState)
+		_ = session.Save(explicitState)
 		// Update the per-profile current_session pointer for the convenience
 		// of subsequent invocations without -s. This is racy across parallel
 		// `dx ask -s` runs, but is harmless because each running invocation
 		// uses its own explicitState above and never reads the pointer.
-		session.SetCurrentSessionID(explicitState.SessionID, profile)
+		_ = session.SetCurrentSessionID(explicitState.SessionID, profile)
 	}
 
 	// Check for piped input
@@ -285,7 +271,7 @@ func uploadPipedData(cfg *config.Config, profile string, data []byte, preState *
 	}
 
 	state.URLsUsed++
-	session.Save(state)
+	_ = session.Save(state)
 	return state
 }
 
@@ -320,31 +306,6 @@ func runNonInteractiveAsk(cfg *config.Config, profile string, question string, p
 		fmt.Fprintln(sw)
 	}
 
-	// Send role if not sent yet
-	if cfg.Role != "" && !state.RoleSent {
-		fmt.Fprintln(sw, "Sending role...")
-		roleMessage := fmt.Sprintf("[Role - This describes who I am, do not evaluate]\n\n%s", cfg.Role)
-		if err := client.SendMessage(state.SessionID, roleMessage, "", ""); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: Could not send role: %v\n", err)
-		} else {
-			state.RoleSent = true
-			session.Save(state)
-		}
-	}
-
-	// Run hooks and prepare message
-	message := question
-	if len(cfg.Hooks) > 0 {
-		hookOutput, err := hook.RunHooks(cfg.Hooks)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: Hook error: %v\n", err)
-		}
-		if hook.ShouldIncludeAppendix(hookOutput, state.LastHookOutput) {
-			message = question + "\n\n" + hook.FormatAppendix(hookOutput)
-			state.LastHookOutput = hookOutput
-		}
-	}
-
 	// Start streaming BEFORE sending message to avoid race condition
 	events, errors, cancel := stream.StreamResponse(cfg.Endpoint, state.SessionID, cfg.GetAuthToken())
 
@@ -374,14 +335,11 @@ func runNonInteractiveAsk(cfg *config.Config, profile string, question string, p
 	}
 
 	// Now send the message (after stream is connected)
-	if err := client.SendMessage(state.SessionID, message, "", ""); err != nil {
+	if err := client.SendMessage(state.SessionID, question, "", ""); err != nil {
 		fmt.Fprintln(os.Stderr, color.Error(fmt.Sprintf("✗ Failed to send message: %v", err)))
 		cancel()
 		os.Exit(1)
 	}
-
-	// Save state (for hook output tracking)
-	session.Save(state)
 
 	// Continue reading stream for response
 	if isTTYOutput() {
@@ -390,7 +348,7 @@ func runNonInteractiveAsk(cfg *config.Config, profile string, question string, p
 	streamResponseWithTimeout(events, errors, cancel, askTimeoutFlag)
 
 	state.LastMessageAt = time.Now()
-	session.Save(state)
+	_ = session.Save(state)
 
 	// Show view URL — goes to stderr when stdout is captured so it doesn't
 	// pollute the captured answer.
@@ -418,24 +376,8 @@ func runInteractiveAsk(cfg *config.Config, profile string, preState *session.Sta
 
 	state, _ := ensureSession(client, profile, preState, os.Stdout)
 
-	// Send role if not sent yet
-	if cfg.Role != "" && !state.RoleSent {
-		fmt.Println("Sending role...")
-		roleMessage := fmt.Sprintf("[Role - This describes who I am, do not evaluate]\n\n%s", cfg.Role)
-		if err := client.SendMessage(state.SessionID, roleMessage, "", ""); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: Could not send role: %v\n", err)
-		} else {
-			state.RoleSent = true
-			session.Save(state)
-			fmt.Println()
-		}
-	}
-
 	fmt.Printf("Session: %s\n", color.SessionID(state.SessionID))
 	fmt.Printf("%s\n", color.Muted("Type your questions. Use up/down arrows for history. Press Ctrl+D to exit."))
-	if len(cfg.Hooks) > 0 {
-		fmt.Printf("Hooks: %s configured (will run on each message)\n", color.Info(fmt.Sprintf("%d", len(cfg.Hooks))))
-	}
 	fmt.Println()
 
 	// Set up liner for line editing and history
@@ -449,7 +391,7 @@ func runInteractiveAsk(cfg *config.Config, profile string, preState *session.Sta
 	historyPath := getHistoryFilePath()
 	if historyPath != "" {
 		if f, err := os.Open(historyPath); err == nil {
-			line.ReadHistory(f)
+			_, _ = line.ReadHistory(f)
 			f.Close()
 		}
 	}
@@ -458,7 +400,7 @@ func runInteractiveAsk(cfg *config.Config, profile string, preState *session.Sta
 	defer func() {
 		if historyPath != "" {
 			if f, err := os.Create(historyPath); err == nil {
-				line.WriteHistory(f)
+				_, _ = line.WriteHistory(f)
 				f.Close()
 			}
 		}
@@ -491,20 +433,6 @@ func runInteractiveAsk(cfg *config.Config, profile string, preState *session.Sta
 		// Handle special commands
 		if question == "exit" || question == "quit" {
 			break
-		}
-
-		// Run hooks and prepare message
-		message := question
-		if len(cfg.Hooks) > 0 {
-			hookOutput, err := hook.RunHooks(cfg.Hooks)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: Hook error: %v\n", err)
-			}
-			if hook.ShouldIncludeAppendix(hookOutput, state.LastHookOutput) {
-				message = question + "\n\n" + hook.FormatAppendix(hookOutput)
-				state.LastHookOutput = hookOutput
-				session.Save(state)
-			}
 		}
 
 		// Start streaming BEFORE sending message to avoid race condition
@@ -540,7 +468,7 @@ func runInteractiveAsk(cfg *config.Config, profile string, preState *session.Sta
 		}
 
 		// Now send the message (after stream is connected)
-		if err := client.SendMessage(state.SessionID, message, "", ""); err != nil {
+		if err := client.SendMessage(state.SessionID, question, "", ""); err != nil {
 			fmt.Fprintln(os.Stderr, color.Error(fmt.Sprintf("✗ Failed: %v", err)))
 			cancel()
 			continue
@@ -552,7 +480,7 @@ func runInteractiveAsk(cfg *config.Config, profile string, preState *session.Sta
 		fmt.Println()
 
 		state.LastMessageAt = time.Now()
-		session.Save(state)
+		_ = session.Save(state)
 	}
 }
 
@@ -572,11 +500,6 @@ func statusWriter() *os.File {
 		return os.Stdout
 	}
 	return os.Stderr
-}
-
-// streamResponseFromChannels reads from existing stream channels
-func streamResponseFromChannels(events <-chan stream.Event, errors <-chan error, cancel func()) {
-	streamResponseWithTimeout(events, errors, cancel, 0)
 }
 
 // streamResponseWithTimeout reads from stream channels with an optional timeout (seconds, 0 = no limit)

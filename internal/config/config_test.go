@@ -73,8 +73,6 @@ func TestSaveLoad_RoundTrip(t *testing.T) {
 		APIKey:     "sk-test-key-12345",
 		TeamID:     "team_abc",
 		Editor:     "nano",
-		Role:       "I am a DBA",
-		Hooks:      []string{"/path/to/hook1.sh", "/path/to/hook2.sh"},
 	}
 
 	if err := Save(original, "default"); err != nil {
@@ -100,12 +98,6 @@ func TestSaveLoad_RoundTrip(t *testing.T) {
 	}
 	if loaded.Editor != original.Editor {
 		t.Errorf("Editor = %q, want %q", loaded.Editor, original.Editor)
-	}
-	if loaded.Role != original.Role {
-		t.Errorf("Role = %q, want %q", loaded.Role, original.Role)
-	}
-	if len(loaded.Hooks) != len(original.Hooks) {
-		t.Errorf("Hooks length = %d, want %d", len(loaded.Hooks), len(original.Hooks))
 	}
 }
 
@@ -140,7 +132,7 @@ func TestSaveLoad_OAuthRoundTrip(t *testing.T) {
 
 func TestLoad_NonExistentProfile(t *testing.T) {
 	setTestHome(t)
-	EnsureConfigDir()
+	_ = EnsureConfigDir()
 
 	_, err := Load("nonexistent")
 	if err == nil {
@@ -225,7 +217,7 @@ func TestProfileExists(t *testing.T) {
 	}
 
 	cfg := &Config{Endpoint: "https://example.com"}
-	Save(cfg, "default")
+	_ = Save(cfg, "default")
 
 	if !ProfileExists("default") {
 		t.Error("ProfileExists() should return true after profile is created")
@@ -238,7 +230,7 @@ func TestProfileExists(t *testing.T) {
 
 func TestListProfiles(t *testing.T) {
 	setTestHome(t)
-	EnsureConfigDir()
+	_ = EnsureConfigDir()
 
 	// No profiles yet
 	profiles, err := ListProfiles()
@@ -250,8 +242,8 @@ func TestListProfiles(t *testing.T) {
 	}
 
 	// Create profiles
-	Save(&Config{Endpoint: "https://a.com"}, "alpha")
-	Save(&Config{Endpoint: "https://b.com"}, "beta")
+	_ = Save(&Config{Endpoint: "https://a.com"}, "alpha")
+	_ = Save(&Config{Endpoint: "https://b.com"}, "beta")
 
 	profiles, err = ListProfiles()
 	if err != nil {
@@ -272,14 +264,14 @@ func TestListProfiles(t *testing.T) {
 
 func TestListProfiles_IgnoresDirsWithoutConfig(t *testing.T) {
 	home := setTestHome(t)
-	EnsureConfigDir()
+	_ = EnsureConfigDir()
 
 	// Create a profile dir without a config file
 	emptyDir := filepath.Join(home, ConfigDirName, ProfilesDirName, "empty")
-	os.MkdirAll(emptyDir, 0700)
+	_ = os.MkdirAll(emptyDir, 0700)
 
 	// Create a real profile
-	Save(&Config{Endpoint: "https://a.com"}, "real")
+	_ = Save(&Config{Endpoint: "https://a.com"}, "real")
 
 	profiles, err := ListProfiles()
 	if err != nil {
@@ -293,7 +285,7 @@ func TestListProfiles_IgnoresDirsWithoutConfig(t *testing.T) {
 func TestDeleteProfile(t *testing.T) {
 	home := setTestHome(t)
 
-	Save(&Config{Endpoint: "https://a.com"}, "todelete")
+	_ = Save(&Config{Endpoint: "https://a.com"}, "todelete")
 
 	dir := filepath.Join(home, ConfigDirName, ProfilesDirName, "todelete")
 	if _, err := os.Stat(dir); err != nil {
@@ -311,7 +303,7 @@ func TestDeleteProfile(t *testing.T) {
 
 func TestDeleteProfile_NonExistent(t *testing.T) {
 	setTestHome(t)
-	EnsureConfigDir()
+	_ = EnsureConfigDir()
 
 	err := DeleteProfile("ghost")
 	if err == nil {
@@ -559,10 +551,8 @@ func TestSaveAuth_PreservesExistingFields(t *testing.T) {
 	initial := &Config{
 		Endpoint: "https://example.com",
 		Editor:   "code",
-		Role:     "I am a tester",
-		Hooks:    []string{"/hook1.sh"},
 	}
-	Save(initial, "default")
+	_ = Save(initial, "default")
 
 	// SaveAuth should preserve non-auth fields
 	auth := &Auth{
@@ -570,7 +560,7 @@ func TestSaveAuth_PreservesExistingFields(t *testing.T) {
 		APIKey: "sk-new",
 		TeamID: "team-3",
 	}
-	SaveAuth(auth, "default")
+	_ = SaveAuth(auth, "default")
 
 	loaded, _ := Load("default")
 	if loaded.Endpoint != "https://example.com" {
@@ -578,9 +568,6 @@ func TestSaveAuth_PreservesExistingFields(t *testing.T) {
 	}
 	if loaded.Editor != "code" {
 		t.Errorf("Editor should be preserved, got %q", loaded.Editor)
-	}
-	if loaded.Role != "I am a tester" {
-		t.Errorf("Role should be preserved, got %q", loaded.Role)
 	}
 }
 
@@ -592,7 +579,7 @@ func TestAPIKeyEncryption_VerifyEncryptedPrefix(t *testing.T) {
 		AuthMethod: "apikey",
 		APIKey:     "test-key",
 	}
-	Save(cfg, "default")
+	_ = Save(cfg, "default")
 
 	// Verify the raw file on disk contains encrypted_api_key and not the plaintext value
 	configPath := filepath.Join(home, ConfigDirName, ProfilesDirName, "default", ConfigFileName)

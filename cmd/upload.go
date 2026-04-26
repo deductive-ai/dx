@@ -32,7 +32,7 @@ var uploadCmd = &cobra.Command{
 	Long: `Upload files or directories to the current Deductive AI session.
 
 Files are uploaded to S3 and attached to the session for analysis.
-A session must be created first using 'dx create-session'.
+A session must exist first — run 'dx ask' to start one.
 
 Examples:
   # Upload a single file
@@ -96,15 +96,14 @@ func runUpload(cmd *cobra.Command, args []string) {
 	// Check for active session
 	state, err := session.LoadCurrent(profile)
 	if err != nil || state == nil {
-		fmt.Fprintln(os.Stderr, "Error: No active session. Run 'dx create-session' first.")
+		fmt.Fprintln(os.Stderr, "Error: No active session. Run 'dx ask' first.")
 		os.Exit(1)
 	}
 
 	// Handle stdin upload
 	if uploadStdinFlag {
 		if state.GetAvailableURLCount() <= 0 {
-			fmt.Fprintln(os.Stderr, "Error: No upload slots available. Resume the session to get more slots.")
-			fmt.Fprintf(os.Stderr, "  Run: dx resume-session -r %s\n", state.SessionID)
+			fmt.Fprintln(os.Stderr, "Error: No upload slots available. Start a new session with 'dx ask --new'.")
 			os.Exit(1)
 		}
 
@@ -184,8 +183,7 @@ func runUpload(cmd *cobra.Command, args []string) {
 	// Check if we have enough presigned URLs
 	availableURLs := state.GetAvailableURLCount()
 	if availableURLs <= 0 {
-		fmt.Fprintln(os.Stderr, "Error: No upload slots available. Resume the session to get more slots.")
-		fmt.Fprintf(os.Stderr, "  Run: dx resume-session -r %s\n", state.SessionID)
+		fmt.Fprintln(os.Stderr, "Error: No upload slots available. Start a new session with 'dx ask --new'.")
 		os.Exit(1)
 	}
 
@@ -203,7 +201,7 @@ func runUpload(cmd *cobra.Command, args []string) {
 		// Count files and total size
 		fileCount := 0
 		var totalSize int64
-		filepath.Walk(path, func(p string, info os.FileInfo, err error) error {
+		_ = filepath.Walk(path, func(p string, info os.FileInfo, err error) error {
 			if err == nil && !info.IsDir() {
 				fileCount++
 				totalSize += info.Size()
@@ -271,7 +269,6 @@ func runUpload(cmd *cobra.Command, args []string) {
 
 	if state.GetAvailableURLCount() == 0 {
 		fmt.Println()
-		fmt.Println("No more upload slots. Resume the session to get more:")
-		fmt.Printf("  dx resume-session -r %s\n", state.SessionID)
+		fmt.Println("No more upload slots. Start a new session with 'dx ask --new'.")
 	}
 }

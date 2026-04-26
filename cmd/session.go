@@ -4,23 +4,13 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"time"
 
-	"github.com/deductive-ai/dx/internal/api"
 	"github.com/deductive-ai/dx/internal/color"
-	"github.com/deductive-ai/dx/internal/config"
-	"github.com/deductive-ai/dx/internal/logging"
 	"github.com/deductive-ai/dx/internal/session"
-	"github.com/deductive-ai/dx/internal/telemetry"
 	"github.com/spf13/cobra"
-	"go.opentelemetry.io/otel/attribute"
-)
-
-var (
-	sessionIDFlag string
 )
 
 var sessionCmd = &cobra.Command{
@@ -37,7 +27,7 @@ Examples:
 	Example: `  dx session list
   dx session clear`,
 	Run: func(cmd *cobra.Command, args []string) {
-		cmd.Help()
+		_ = cmd.Help()
 	},
 }
 
@@ -83,55 +73,13 @@ Examples:
 	Run: runSessionClear,
 }
 
-var createSessionCmd = &cobra.Command{
-	Use:   "create-session",
-	Short: "Create a new chat session",
-	Long: `Create a new chat session with Deductive AI.
-
-This creates a new session and provides presigned URLs for file uploads.
-The session ID is saved locally for subsequent commands (ask, upload).
-
-If you have configured a role (via 'dx set-role'), it will be sent
-automatically as the first message when you use 'dx ask'.
-
-Examples:
-  dx create-session
-  dx create-session --profile=staging`,
-	Run: runCreateSession,
-}
-
-var resumeSessionCmd = &cobra.Command{
-	Use:   "resume-session",
-	Short: "Resume an existing chat session",
-	Long: `Resume an existing chat session by its ID.
-
-This retrieves the session and provides fresh presigned URLs for file uploads.
-Use this to continue a session from another terminal or after the CLI restarts.
-
-Examples:
-  dx resume-session --session-id=abc123
-  dx resume-session -r abc123
-  dx resume-session -r abc123 --profile=staging`,
-	Run: runResumeSession,
-}
-
 func init() {
 	sessionCmd.Hidden = true
 	rootCmd.AddCommand(sessionCmd)
 
-	// Hidden: create-session and resume-session are power-user commands
-	// dx ask auto-creates sessions; dx ask --session covers resume
-	createSessionCmd.Hidden = true
-	resumeSessionCmd.Hidden = true
-	rootCmd.AddCommand(createSessionCmd)
-	rootCmd.AddCommand(resumeSessionCmd)
-
 	sessionCmd.AddCommand(sessionListCmd)
 	sessionCmd.AddCommand(sessionClearCmd)
 	sessionCmd.AddCommand(sessionDeleteCmd)
-
-	resumeSessionCmd.Flags().StringVarP(&sessionIDFlag, "session-id", "r", "", "Session ID to resume (required)")
-	resumeSessionCmd.MarkFlagRequired("session-id")
 }
 
 func runSessionList(cmd *cobra.Command, args []string) {
@@ -145,7 +93,7 @@ func runSessionList(cmd *cobra.Command, args []string) {
 
 	if len(sessions) == 0 {
 		fmt.Printf("No sessions found for profile '%s'.\n", profile)
-		fmt.Println("Use 'dx create-session' to create a new session.")
+		fmt.Println("Use 'dx ask' to start a new session.")
 		return
 	}
 
@@ -191,7 +139,7 @@ func runSessionClear(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Printf("%s Cleared %d session(s)\n", color.Success("✓"), count)
-	fmt.Println("Use 'dx create-session' to start a new session.")
+	fmt.Println("Use 'dx ask' to start a new session.")
 }
 
 func runSessionDelete(cmd *cobra.Command, args []string) {
@@ -235,169 +183,6 @@ func formatAge(t time.Time) string {
 		return "1 day ago"
 	}
 	return fmt.Sprintf("%d days ago", days)
-}
-
-func runCreateSession(cmd *cobra.Command, args []string) {
-	profile := GetProfile()
-
-	_, span := telemetry.StartSpan(context.Background(), "dx.create_session",
-		attribute.String("profile", profile),
-	)
-	defer span.End()
-
-	cfg, err := config.Load(profile)
-	if err != nil {
-		if profile == config.DefaultProfile {
-			fmt.Fprintln(os.Stderr, "Error: No configuration found. Run 'dx ask' to get started.")
-		} else {
-			fmt.Fprintf(os.Stderr, "Error: Profile '%s' not found. Run 'dx ask --profile=%s' to set it up.\n", profile, profile)
-		}
-		os.Exit(1)
-	}
-
-	cfg, err = EnsureAuth(cfg, profile)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	client := api.NewClient(cfg)
-
-	fmt.Println("Creating session...")
-
-	resp, err := client.CreateSession(&api.SessionRequest{
-		Mode: "ask",
-	})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating session: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Save session state
-	state := &session.State{
-		SessionID:      resp.SessionID,
-		Profile:        profile,
-		URL:            resp.URL,
-		PresignedURLs:  resp.PresignedURLs,
-		CreatedAt:      time.Now(),
-		URLsUsed:       0,
-		RoleSent:       false,
-		LastHookOutput: "",
-	}
-
-	if err := session.Save(state); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: Could not save session state: %v\n", err)
-	}
-
-	// Set as current session
-	if err := session.SetCurrentSessionID(state.SessionID, profile); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: Could not set current session: %v\n", err)
-	}
-
-	logging.Debug("Session created", "session_id", resp.SessionID, "profile", profile)
-
-	fmt.Printf("%s Session created: %s\n", color.Success("✓"), color.SessionID(resp.SessionID))
-	fmt.Printf("  View in browser: %s\n", color.URL(resp.URL))
-	fmt.Printf("  Resume command:  %s\n", color.Command("dx resume-session -r "+resp.SessionID))
-	fmt.Printf("  Upload slots:    %s available\n", color.Info(fmt.Sprintf("%d", len(resp.PresignedURLs))))
-	if profile != config.DefaultProfile {
-		fmt.Printf("  Profile:         %s\n", color.Info(profile))
-	}
-	if cfg.Role != "" {
-		fmt.Printf("  Role:            %s\n", color.Muted("will be sent with first message"))
-	}
-	fmt.Println()
-	fmt.Printf("You can now use '%s' to upload files or '%s' to ask questions.\n",
-		color.Command("dx upload"), color.Command("dx ask"))
-}
-
-func runResumeSession(cmd *cobra.Command, args []string) {
-	profile := GetProfile()
-
-	_, span := telemetry.StartSpan(context.Background(), "dx.resume_session",
-		attribute.String("profile", profile),
-	)
-	defer span.End()
-
-	cfg, err := config.Load(profile)
-	if err != nil {
-		if profile == config.DefaultProfile {
-			fmt.Fprintln(os.Stderr, "Error: No configuration found. Run 'dx ask' to get started.")
-		} else {
-			fmt.Fprintf(os.Stderr, "Error: Profile '%s' not found. Run 'dx ask --profile=%s' to set it up.\n", profile, profile)
-		}
-		os.Exit(1)
-	}
-
-	cfg, err = EnsureAuth(cfg, profile)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	if sessionIDFlag == "" {
-		fmt.Fprintln(os.Stderr, "Error: session-id is required")
-		os.Exit(1)
-	}
-
-	// Support short ID prefix matching
-	if resolved, err := session.ResolveShortID(sessionIDFlag, profile); err == nil {
-		sessionIDFlag = resolved
-	}
-
-	client := api.NewClient(cfg)
-
-	fmt.Printf("Resuming session %s...\n", sessionIDFlag)
-
-	resp, err := client.GetSession(sessionIDFlag)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error resuming session: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Try to load existing session state to preserve role_sent status
-	existingState, _ := session.Load(sessionIDFlag)
-	roleSent := false
-	lastHookOutput := ""
-	createdAt := time.Now()
-	if existingState != nil {
-		roleSent = existingState.RoleSent
-		lastHookOutput = existingState.LastHookOutput
-		if !existingState.CreatedAt.IsZero() {
-			createdAt = existingState.CreatedAt
-		}
-	}
-
-	// Save session state
-	state := &session.State{
-		SessionID:      resp.SessionID,
-		Profile:        profile,
-		URL:            resp.URL,
-		PresignedURLs:  resp.PresignedURLs,
-		CreatedAt:      createdAt,
-		URLsUsed:       0,
-		RoleSent:       roleSent,
-		LastHookOutput: lastHookOutput,
-	}
-
-	if err := session.Save(state); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: Could not save session state: %v\n", err)
-	}
-
-	// Set as current session
-	if err := session.SetCurrentSessionID(state.SessionID, profile); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: Could not set current session: %v\n", err)
-	}
-
-	fmt.Printf("%s Session resumed: %s\n", color.Success("✓"), color.SessionID(resp.SessionID))
-	fmt.Printf("  View in browser: %s\n", color.URL(resp.URL))
-	fmt.Printf("  Upload slots:    %s available\n", color.Info(fmt.Sprintf("%d", len(resp.PresignedURLs))))
-	if profile != config.DefaultProfile {
-		fmt.Printf("  Profile:         %s\n", color.Info(profile))
-	}
-	fmt.Println()
-	fmt.Printf("You can now use '%s' to upload files or '%s' to ask questions.\n",
-		color.Command("dx upload"), color.Command("dx ask"))
 }
 
 

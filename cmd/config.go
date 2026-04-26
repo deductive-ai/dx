@@ -43,9 +43,7 @@ Non-interactive mode (settings provided via flags):
 
 Set preferred text editor:
   dx config --editor=vim
-  dx config --editor=nano
-
-Role is set only via 'dx set-role', not in config.`,
+  dx config --editor=nano`,
 	Run: runConfig,
 }
 
@@ -329,12 +327,6 @@ func runConfigList(cmd *cobra.Command, args []string) {
 		fmt.Printf("  %s%s\n", profile, defaultMark)
 		fmt.Printf("    Endpoint: %s\n", cfg.Endpoint)
 		fmt.Printf("    Auth: %s\n", authStatus)
-		if cfg.Role != "" {
-			fmt.Printf("    Role: %s (set via dx set-role)\n", truncateString(cfg.Role, 40))
-		}
-		if len(cfg.Hooks) > 0 {
-			fmt.Printf("    Hooks: %d configured\n", len(cfg.Hooks))
-		}
 	}
 }
 

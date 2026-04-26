@@ -253,10 +253,10 @@ func parseS3Error(statusCode int, body []byte, uploadURL string) error {
 		return fmt.Errorf("upload bucket does not exist. This is a server configuration issue - please contact support")
 	}
 	if strings.Contains(bodyStr, "<Code>AccessDenied</Code>") {
-		return fmt.Errorf("upload access denied. The presigned URL may have expired - try creating a new session with 'dx create-session'")
+		return fmt.Errorf("upload access denied. The presigned URL may have expired - try starting a new session with 'dx ask --new'")
 	}
 	if strings.Contains(bodyStr, "<Code>ExpiredToken</Code>") || strings.Contains(bodyStr, "<Code>RequestExpired</Code>") {
-		return fmt.Errorf("upload URL expired. Create a new session with 'dx create-session' to get fresh upload URLs")
+		return fmt.Errorf("upload URL expired. Start a new session with 'dx ask --new' to get fresh upload URLs")
 	}
 	if strings.Contains(bodyStr, "<Code>InvalidAccessKeyId</Code>") {
 		return fmt.Errorf("upload credentials invalid. This is a server configuration issue - please contact support")
@@ -271,7 +271,7 @@ func parseS3Error(statusCode int, body []byte, uploadURL string) error {
 	// Generic status code messages
 	switch statusCode {
 	case 403:
-		return fmt.Errorf("upload forbidden (403). The presigned URL may have expired - try 'dx create-session'")
+		return fmt.Errorf("upload forbidden (403). The presigned URL may have expired - try 'dx ask --new'")
 	case 404:
 		return fmt.Errorf("upload destination not found (404). This is a server configuration issue - please contact support")
 	case 500, 502, 503, 504:

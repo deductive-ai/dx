@@ -1,5 +1,11 @@
-// Copyright 2025 Deductive AI, Inc.
-// SPDX-License-Identifier: Apache-2.0
+/*
+ * Copyright (c) 2023, Deductive AI, Inc. All rights reserved.
+ *
+ * This software is the confidential and proprietary information of
+ * Deductive AI, Inc. You shall not disclose such confidential
+ * information and shall use it only in accordance with the terms of
+ * the license agreement you entered into with Deductive AI, Inc.
+ */
 
 package config
 
@@ -50,8 +56,6 @@ type Config struct {
 	EncryptedAPIKey   string    `toml:"encrypted_api_key,omitempty"`
 	TeamID            string    `toml:"team_id,omitempty"`
 	Editor            string    `toml:"editor,omitempty"`
-	Role              string    `toml:"role,omitempty"`
-	Hooks             []string  `toml:"hooks,omitempty"`
 }
 
 // Auth represents authentication configuration

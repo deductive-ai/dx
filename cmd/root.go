@@ -53,7 +53,7 @@ Environment variables: DX_API_KEY, DX_ENDPOINT, DX_PROFILE (for CI / scripts)`,
 			printVersion()
 			return
 		}
-		cmd.Help()
+		_ = cmd.Help()
 	},
 }
 

@@ -1,5 +1,11 @@
-// Copyright 2025 Deductive AI, Inc.
-// SPDX-License-Identifier: Apache-2.0
+/*
+ * Copyright (c) 2023, Deductive AI, Inc. All rights reserved.
+ *
+ * This software is the confidential and proprietary information of
+ * Deductive AI, Inc. You shall not disclose such confidential
+ * information and shall use it only in accordance with the terms of
+ * the license agreement you entered into with Deductive AI, Inc.
+ */
 
 package session
 
@@ -17,29 +23,25 @@ import (
 
 // State represents the session state stored in ~/.dx/sessions/<session-id>
 type State struct {
-	SessionID      string             `json:"session_id"`
-	Profile        string             `json:"profile"`
-	URL            string             `json:"url"`
-	PresignedURLs  []api.PresignedURL `json:"presigned_urls"`
-	CreatedAt      time.Time          `json:"created_at"`
-	LastMessageAt  time.Time          `json:"last_message_at"`
-	URLsUsed       int                `json:"urls_used"`
-	RoleSent       bool               `json:"role_sent"`
-	LastHookOutput string             `json:"last_hook_output"`
+	SessionID     string             `json:"session_id"`
+	Profile       string             `json:"profile"`
+	URL           string             `json:"url"`
+	PresignedURLs []api.PresignedURL `json:"presigned_urls"`
+	CreatedAt     time.Time          `json:"created_at"`
+	LastMessageAt time.Time          `json:"last_message_at"`
+	URLsUsed      int                `json:"urls_used"`
 }
 
 // encryptedState is the on-disk format with encrypted sensitive data
 type encryptedState struct {
-	SessionID            string             `json:"session_id"`
-	Profile              string             `json:"profile"`
-	URL                  string             `json:"url"`
-	EncryptedURLs        string             `json:"encrypted_urls,omitempty"`
-	PresignedURLs        []api.PresignedURL `json:"presigned_urls,omitempty"`
-	CreatedAt            time.Time          `json:"created_at"`
-	LastMessageAt        time.Time          `json:"last_message_at"`
-	URLsUsed             int                `json:"urls_used"`
-	RoleSent             bool               `json:"role_sent"`
-	LastHookOutput       string             `json:"last_hook_output"`
+	SessionID     string             `json:"session_id"`
+	Profile       string             `json:"profile"`
+	URL           string             `json:"url"`
+	EncryptedURLs string             `json:"encrypted_urls,omitempty"`
+	PresignedURLs []api.PresignedURL `json:"presigned_urls,omitempty"`
+	CreatedAt     time.Time          `json:"created_at"`
+	LastMessageAt time.Time          `json:"last_message_at"`
+	URLsUsed      int                `json:"urls_used"`
 }
 
 const DefaultSessionTTL = 30 * time.Minute
@@ -74,14 +76,12 @@ func Load(sessionID string) (*State, error) {
 	}
 
 	state := &State{
-		SessionID:      enc.SessionID,
-		Profile:        enc.Profile,
-		URL:            enc.URL,
-		CreatedAt:      enc.CreatedAt,
-		LastMessageAt:  enc.LastMessageAt,
-		URLsUsed:       enc.URLsUsed,
-		RoleSent:       enc.RoleSent,
-		LastHookOutput: enc.LastHookOutput,
+		SessionID:     enc.SessionID,
+		Profile:       enc.Profile,
+		URL:           enc.URL,
+		CreatedAt:     enc.CreatedAt,
+		LastMessageAt: enc.LastMessageAt,
+		URLsUsed:      enc.URLsUsed,
 	}
 
 	// Decrypt presigned URLs if encrypted
@@ -124,15 +124,13 @@ func Save(state *State) error {
 	}
 
 	enc := encryptedState{
-		SessionID:      state.SessionID,
-		Profile:        state.Profile,
-		URL:            state.URL,
-		EncryptedURLs:  encryptedURLs,
-		CreatedAt:      state.CreatedAt,
-		LastMessageAt:  state.LastMessageAt,
-		URLsUsed:       state.URLsUsed,
-		RoleSent:       state.RoleSent,
-		LastHookOutput: state.LastHookOutput,
+		SessionID:     state.SessionID,
+		Profile:       state.Profile,
+		URL:           state.URL,
+		EncryptedURLs: encryptedURLs,
+		CreatedAt:     state.CreatedAt,
+		LastMessageAt: state.LastMessageAt,
+		URLsUsed:      state.URLsUsed,
 	}
 
 	data, err := json.MarshalIndent(enc, "", "  ")

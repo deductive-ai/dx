@@ -13,9 +13,6 @@ import (
 )
 
 var (
-	styleAnswer = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("15"))
-
 	styleError = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("9")).
 			Bold(true)
@@ -57,9 +54,8 @@ func Markdown(content string) string {
 // for streaming output. When the complete flag is set, the accumulated content
 // is re-rendered as a whole for final display.
 type MarkdownWriter struct {
-	w         io.Writer
-	buffer    strings.Builder
-	lineCount int
+	w      io.Writer
+	buffer strings.Builder
 }
 
 // NewMarkdownWriter wraps w to enable streaming markdown output.

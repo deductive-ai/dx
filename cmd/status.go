@@ -26,9 +26,7 @@ type StatusOutput struct {
 	Session       *SessionStatus `json:"session"`
 	// URL is a convenience top-level alias for session.url so that
 	// SESSION_URL=$(dx status --json | jq -r .url) works directly.
-	URL            string `json:"url,omitempty"`
-	HooksCount     int    `json:"hooks_count"`
-	RoleConfigured bool   `json:"role_configured"`
+	URL string `json:"url,omitempty"`
 }
 
 // SessionStatus is the session sub-object inside StatusOutput.
@@ -38,7 +36,6 @@ type SessionStatus struct {
 	CreatedAt        time.Time `json:"created_at"`
 	UploadsAvailable int       `json:"uploads_available"`
 	UploadsTotal     int       `json:"uploads_total"`
-	RoleSent         bool      `json:"role_sent"`
 }
 
 var statusJSONFlag bool
@@ -71,11 +68,8 @@ JSON output (--json):
         "url":               "https://app.deductive.ai/threads/<id>",
         "created_at":        "2024-01-01T00:00:00Z",
         "uploads_available": 8,
-        "uploads_total":     10,
-        "role_sent":         false
-      },
-      "hooks_count":    1,
-      "role_configured": true
+        "uploads_total":     10
+      }
     }
   When no active session exists, "session" and "url" are null/omitted.
 
@@ -192,8 +186,6 @@ func runStatusJSON(profile string) {
 	out.Endpoint = cfg.Endpoint
 	out.Authenticated = cfg.IsAuthenticated()
 	out.AuthMethod = cfg.AuthMethod
-	out.RoleConfigured = cfg.Role != ""
-	out.HooksCount = len(cfg.Hooks)
 
 	state, _ := session.LoadCurrent(profile)
 	if state != nil {
@@ -207,7 +199,6 @@ func runStatusJSON(profile string) {
 			CreatedAt:        state.CreatedAt,
 			UploadsAvailable: available,
 			UploadsTotal:     len(state.PresignedURLs),
-			RoleSent:         state.RoleSent,
 		}
 		out.URL = state.URL
 	}

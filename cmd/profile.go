@@ -95,12 +95,6 @@ func runProfileList(cmd *cobra.Command, args []string) {
 		fmt.Printf("  %s %s\n", marker, profile)
 		fmt.Printf("    Endpoint: %s\n", cfg.Endpoint)
 		fmt.Printf("    Auth: %s\n", authStatus)
-		if cfg.Role != "" {
-			fmt.Printf("    Role: %s\n", truncateString(cfg.Role, 40))
-		}
-		if len(cfg.Hooks) > 0 {
-			fmt.Printf("    Hooks: %d configured\n", len(cfg.Hooks))
-		}
 	}
 }
 
@@ -137,11 +131,4 @@ func runProfileUse(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Printf("%s Active profile set to '%s'\n", color.Success("✓"), profile)
-}
-
-func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
 }

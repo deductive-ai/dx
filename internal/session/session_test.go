@@ -30,10 +30,8 @@ func TestSaveLoad_RoundTrip(t *testing.T) {
 			{UploadURL: "https://s3.example.com/upload1?sig=abc", Key: "team1/thread_sess/uploads/file_0", ExpiresAt: "2025-12-31T23:59:59Z"},
 			{UploadURL: "https://s3.example.com/upload2?sig=def", Key: "team1/thread_sess/uploads/file_1", ExpiresAt: "2025-12-31T23:59:59Z"},
 		},
-		CreatedAt:      time.Now().Truncate(time.Second),
-		URLsUsed:       1,
-		RoleSent:       true,
-		LastHookOutput: "hook output data",
+		CreatedAt: time.Now().Truncate(time.Second),
+		URLsUsed:  1,
 	}
 
 	if err := Save(original); err != nil {
@@ -60,12 +58,6 @@ func TestSaveLoad_RoundTrip(t *testing.T) {
 	if loaded.URLsUsed != original.URLsUsed {
 		t.Errorf("URLsUsed = %d, want %d", loaded.URLsUsed, original.URLsUsed)
 	}
-	if loaded.RoleSent != original.RoleSent {
-		t.Errorf("RoleSent = %v, want %v", loaded.RoleSent, original.RoleSent)
-	}
-	if loaded.LastHookOutput != original.LastHookOutput {
-		t.Errorf("LastHookOutput = %q, want %q", loaded.LastHookOutput, original.LastHookOutput)
-	}
 	if len(loaded.PresignedURLs) != len(original.PresignedURLs) {
 		t.Fatalf("PresignedURLs length = %d, want %d", len(loaded.PresignedURLs), len(original.PresignedURLs))
 	}
@@ -78,7 +70,7 @@ func TestSaveLoad_RoundTrip(t *testing.T) {
 
 func TestLoad_NonExistent(t *testing.T) {
 	setTestHome(t)
-	config.EnsureConfigDir()
+	_ = config.EnsureConfigDir()
 
 	state, err := Load("nonexistent-session")
 	if err != nil {
@@ -93,7 +85,7 @@ func TestGetSetCurrentSessionID(t *testing.T) {
 	setTestHome(t)
 
 	profile := "default"
-	config.EnsureProfileDir(profile)
+	_ = config.EnsureProfileDir(profile)
 
 	// No current session initially
 	id, err := GetCurrentSessionID(profile)
@@ -139,8 +131,8 @@ func TestLoadCurrent(t *testing.T) {
 		URL:       "https://example.com",
 		CreatedAt: time.Now(),
 	}
-	Save(s)
-	SetCurrentSessionID(s.SessionID, profile)
+	_ = Save(s)
+	_ = SetCurrentSessionID(s.SessionID, profile)
 
 	state, err = LoadCurrent(profile)
 	if err != nil {
@@ -212,7 +204,7 @@ func TestGetNextPresignedURL(t *testing.T) {
 
 func TestListAll(t *testing.T) {
 	setTestHome(t)
-	config.EnsureConfigDir()
+	_ = config.EnsureConfigDir()
 
 	// No sessions
 	sessions, err := ListAll()
@@ -224,8 +216,8 @@ func TestListAll(t *testing.T) {
 	}
 
 	// Save some sessions
-	Save(&State{SessionID: "sess-1", Profile: "default", CreatedAt: time.Now()})
-	Save(&State{SessionID: "sess-2", Profile: "default", CreatedAt: time.Now()})
+	_ = Save(&State{SessionID: "sess-1", Profile: "default", CreatedAt: time.Now()})
+	_ = Save(&State{SessionID: "sess-2", Profile: "default", CreatedAt: time.Now()})
 
 	sessions, err = ListAll()
 	if err != nil {
@@ -238,18 +230,18 @@ func TestListAll(t *testing.T) {
 
 func TestClearAll(t *testing.T) {
 	setTestHome(t)
-	config.EnsureConfigDir()
+	_ = config.EnsureConfigDir()
 
 	defaultProfile := "default"
 	stagingProfile := "staging"
-	config.EnsureProfileDir(defaultProfile)
-	config.EnsureProfileDir(stagingProfile)
+	_ = config.EnsureProfileDir(defaultProfile)
+	_ = config.EnsureProfileDir(stagingProfile)
 
-	Save(&State{SessionID: "sess-a", Profile: defaultProfile, CreatedAt: time.Now()})
-	Save(&State{SessionID: "sess-b", Profile: defaultProfile, CreatedAt: time.Now()})
-	Save(&State{SessionID: "sess-c", Profile: stagingProfile, CreatedAt: time.Now()})
-	SetCurrentSessionID("sess-a", defaultProfile)
-	SetCurrentSessionID("sess-c", stagingProfile)
+	_ = Save(&State{SessionID: "sess-a", Profile: defaultProfile, CreatedAt: time.Now()})
+	_ = Save(&State{SessionID: "sess-b", Profile: defaultProfile, CreatedAt: time.Now()})
+	_ = Save(&State{SessionID: "sess-c", Profile: stagingProfile, CreatedAt: time.Now()})
+	_ = SetCurrentSessionID("sess-a", defaultProfile)
+	_ = SetCurrentSessionID("sess-c", stagingProfile)
 
 	count, err := ClearAll(defaultProfile)
 	if err != nil {
@@ -281,13 +273,13 @@ func TestClearAll(t *testing.T) {
 
 func TestDelete(t *testing.T) {
 	setTestHome(t)
-	config.EnsureConfigDir()
+	_ = config.EnsureConfigDir()
 
 	profile := "default"
-	config.EnsureProfileDir(profile)
+	_ = config.EnsureProfileDir(profile)
 
-	Save(&State{SessionID: "sess-del", Profile: profile, CreatedAt: time.Now()})
-	SetCurrentSessionID("sess-del", profile)
+	_ = Save(&State{SessionID: "sess-del", Profile: profile, CreatedAt: time.Now()})
+	_ = SetCurrentSessionID("sess-del", profile)
 
 	if err := Delete("sess-del", profile); err != nil {
 		t.Fatalf("Delete() error: %v", err)
@@ -308,16 +300,16 @@ func TestDelete(t *testing.T) {
 
 func TestDelete_NonMatchingCurrent(t *testing.T) {
 	setTestHome(t)
-	config.EnsureConfigDir()
+	_ = config.EnsureConfigDir()
 
 	profile := "default"
-	config.EnsureProfileDir(profile)
+	_ = config.EnsureProfileDir(profile)
 
-	Save(&State{SessionID: "sess-keep", Profile: profile, CreatedAt: time.Now()})
-	Save(&State{SessionID: "sess-remove", Profile: profile, CreatedAt: time.Now()})
-	SetCurrentSessionID("sess-keep", profile)
+	_ = Save(&State{SessionID: "sess-keep", Profile: profile, CreatedAt: time.Now()})
+	_ = Save(&State{SessionID: "sess-remove", Profile: profile, CreatedAt: time.Now()})
+	_ = SetCurrentSessionID("sess-keep", profile)
 
-	Delete("sess-remove", profile)
+	_ = Delete("sess-remove", profile)
 
 	// Current session pointer should still point to sess-keep
 	id, _ := GetCurrentSessionID(profile)
@@ -328,7 +320,7 @@ func TestDelete_NonMatchingCurrent(t *testing.T) {
 
 func TestDelete_NonExistent(t *testing.T) {
 	setTestHome(t)
-	config.EnsureConfigDir()
+	_ = config.EnsureConfigDir()
 
 	err := Delete("ghost-session", "default")
 	if err == nil {
@@ -338,7 +330,7 @@ func TestDelete_NonExistent(t *testing.T) {
 
 func TestSessionEncryption_PresignedURLs(t *testing.T) {
 	home := setTestHome(t)
-	config.EnsureConfigDir()
+	_ = config.EnsureConfigDir()
 
 	state := &State{
 		SessionID: "sess-enc-test",
@@ -349,7 +341,7 @@ func TestSessionEncryption_PresignedURLs(t *testing.T) {
 		CreatedAt: time.Now(),
 	}
 
-	Save(state)
+	_ = Save(state)
 
 	// Read raw file to verify URLs are encrypted
 	sessionsDir := filepath.Join(home, config.ConfigDirName, config.SessionsDirName)
@@ -359,7 +351,7 @@ func TestSessionEncryption_PresignedURLs(t *testing.T) {
 	}
 
 	var raw map[string]interface{}
-	json.Unmarshal(data, &raw)
+	_ = json.Unmarshal(data, &raw)
 
 	encURLs, ok := raw["encrypted_urls"].(string)
 	if !ok || encURLs == "" {
@@ -420,17 +412,17 @@ func TestUpdateFromResponse(t *testing.T) {
 
 func TestExists(t *testing.T) {
 	setTestHome(t)
-	config.EnsureConfigDir()
+	_ = config.EnsureConfigDir()
 
 	profile := "default"
-	config.EnsureProfileDir(profile)
+	_ = config.EnsureProfileDir(profile)
 
 	if Exists(profile) {
 		t.Error("Exists() should return false with no current session")
 	}
 
-	Save(&State{SessionID: "sess-exists", Profile: profile, CreatedAt: time.Now()})
-	SetCurrentSessionID("sess-exists", profile)
+	_ = Save(&State{SessionID: "sess-exists", Profile: profile, CreatedAt: time.Now()})
+	_ = SetCurrentSessionID("sess-exists", profile)
 
 	if !Exists(profile) {
 		t.Error("Exists() should return true after setting current session")
@@ -452,9 +444,9 @@ func TestListForProfile(t *testing.T) {
 	s1 := &State{SessionID: "sess-aaa", Profile: "default", CreatedAt: time.Now()}
 	s2 := &State{SessionID: "sess-bbb", Profile: "staging", CreatedAt: time.Now()}
 	s3 := &State{SessionID: "sess-ccc", Profile: "default", CreatedAt: time.Now()}
-	Save(s1)
-	Save(s2)
-	Save(s3)
+	_ = Save(s1)
+	_ = Save(s2)
+	_ = Save(s3)
 
 	defaultSessions, err := ListForProfile("default")
 	if err != nil {
@@ -488,10 +480,10 @@ func TestResolveShortID(t *testing.T) {
 	s2 := &State{SessionID: "abc12345-5555-6666-7777-888888888888", Profile: "default", CreatedAt: time.Now()}
 	s3 := &State{SessionID: "def99999-1111-2222-3333-444444444444", Profile: "default", CreatedAt: time.Now()}
 	s4 := &State{SessionID: "abc12345-9999-0000-1111-222222222222", Profile: "staging", CreatedAt: time.Now()}
-	Save(s1)
-	Save(s2)
-	Save(s3)
-	Save(s4)
+	_ = Save(s1)
+	_ = Save(s2)
+	_ = Save(s3)
+	_ = Save(s4)
 
 	// Full ID should return as-is
 	resolved, err := ResolveShortID(s1.SessionID, "default")

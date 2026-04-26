@@ -59,7 +59,7 @@ PowerShell:
 After installation, restart your shell or source the configuration file.`,
 	DisableFlagsInUseLine: true,
 	ValidArgs:             []string{"bash", "zsh", "fish", "powershell"},
-	Args:                  cobra.ExactValidArgs(1),
+	Args:                  cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
 	Run:                   runCompletion,
 }
 
@@ -83,13 +83,13 @@ func runCompletion(cmd *cobra.Command, args []string) {
 	// Output to stdout
 	switch shell {
 	case "bash":
-		cmd.Root().GenBashCompletion(os.Stdout)
+		_ = cmd.Root().GenBashCompletion(os.Stdout)
 	case "zsh":
-		cmd.Root().GenZshCompletion(os.Stdout)
+		_ = cmd.Root().GenZshCompletion(os.Stdout)
 	case "fish":
-		cmd.Root().GenFishCompletion(os.Stdout, true)
+		_ = cmd.Root().GenFishCompletion(os.Stdout, true)
 	case "powershell":
-		cmd.Root().GenPowerShellCompletionWithDesc(os.Stdout)
+		_ = cmd.Root().GenPowerShellCompletionWithDesc(os.Stdout)
 	}
 }
 
