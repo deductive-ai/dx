@@ -56,8 +56,6 @@ var statusCmd = &cobra.Command{
 - Current profile and endpoint
 - Authentication status
 - Active session information
-- Configured hooks
-- Role configuration
 
 JSON output (--json):
   Emits a single JSON object suitable for scripting. The session URL is
@@ -100,8 +98,8 @@ Examples:
 
   # Check status of a different profile
   dx status --profile=staging`,
-	GroupID: "usage",
-	Run:     runStatus,
+	Hidden: true,
+	Run:    runStatus,
 }
 
 func init() {
@@ -128,7 +126,7 @@ func runStatus(cmd *cobra.Command, args []string) {
 	cfg, err := config.Load(profile)
 	if err != nil {
 		fmt.Printf("  Status: %s\n", color.Error("Not configured"))
-		fmt.Printf("\n  Run '%s' to configure.\n", color.Command("dx config --endpoint=<url>"))
+		fmt.Printf("\n  Run '%s' to get started.\n", color.Command("dx ask"))
 		return
 	}
 
@@ -168,7 +166,7 @@ func runStatus(cmd *cobra.Command, args []string) {
 		}
 	} else {
 		fmt.Printf("  Status: %s\n", color.Error("✗ Not authenticated"))
-		fmt.Printf("  Run '%s' to authenticate.\n", color.Command("dx auth"))
+		fmt.Printf("  Run '%s' to re-authenticate.\n", color.Command("dx auth"))
 	}
 	fmt.Println()
 
@@ -177,58 +175,10 @@ func runStatus(cmd *cobra.Command, args []string) {
 	state, _ := session.LoadCurrent(profile)
 	if state != nil {
 		fmt.Printf("  Status: %s\n", color.Success("✓ Active"))
-		fmt.Printf("  ID: %s\n", color.SessionID(state.SessionID))
-		fmt.Printf("  Created: %s\n", state.CreatedAt.Format("2006-01-02 15:04:05"))
-		available := len(state.PresignedURLs) - state.URLsUsed
-		fmt.Printf("  Uploads: %d/%d available\n", available, len(state.PresignedURLs))
-		if state.RoleSent {
-			fmt.Printf("  Role: %s\n", color.Muted("sent"))
-		}
 		fmt.Printf("  URL: %s\n", color.URL(state.URL))
 	} else {
 		fmt.Printf("  Status: %s\n", color.Muted("No active session"))
-		fmt.Printf("  Run '%s' to start.\n", color.Command("dx create-session"))
-	}
-	fmt.Println()
-
-	// Role
-	fmt.Printf("%s\n", color.Title("Role"))
-	if cfg.Role != "" {
-		// Show first line or truncated role
-		roleLine := cfg.Role
-		if idx := findNewline(roleLine); idx >= 0 {
-			roleLine = roleLine[:idx]
-		}
-		if len(roleLine) > 60 {
-			roleLine = roleLine[:60] + "..."
-		}
-		fmt.Printf("  Configured: %s\n", color.Success("✓"))
-		fmt.Printf("  Preview: %s\n", color.Muted(roleLine))
-	} else {
-		fmt.Printf("  Configured: %s\n", color.Muted("No"))
-		fmt.Printf("  Run '%s' to set.\n", color.Command("dx set-role"))
-	}
-	fmt.Println()
-
-	// Hooks
-	fmt.Printf("%s\n", color.Title("Hooks"))
-	if len(cfg.Hooks) > 0 {
-		fmt.Printf("  Configured: %s (%d)\n", color.Success("✓"), len(cfg.Hooks))
-		for i, h := range cfg.Hooks {
-			status := color.Success("✓")
-			if _, err := os.Stat(h); err != nil {
-				status = color.Error("✗")
-			}
-			// Show truncated path
-			display := h
-			if len(display) > 50 {
-				display = "..." + display[len(display)-47:]
-			}
-			fmt.Printf("  [%d] %s %s\n", i, status, color.Muted(display))
-		}
-	} else {
-		fmt.Printf("  Configured: %s\n", color.Muted("None"))
-		fmt.Printf("  Run '%s' to add.\n", color.Command("dx hook add <script>"))
+		fmt.Printf("  Run '%s' to start one.\n", color.Command("dx ask"))
 	}
 }
 
@@ -274,15 +224,6 @@ func runStatusJSON(profile string) {
 		os.Exit(1)
 	}
 	fmt.Println(string(data))
-}
-
-func findNewline(s string) int {
-	for i, c := range s {
-		if c == '\n' || c == '\r' {
-			return i
-		}
-	}
-	return -1
 }
 
 func formatDuration(d time.Duration) string {

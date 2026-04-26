@@ -57,23 +57,9 @@ Piped input:
   # Piped data is uploaded and interactive mode starts, so you can
   # ask multiple follow-up questions about the data.
 
-Structured output (--schema):
-  Enforce a specific JSON shape on the answer. The schema is a comma-separated
-  list of name:type pairs. Valid types: str, int, bool, float, map, list.
-
-  ps -eo pid,etime,pcpu,comm | dx ask "which processes have run >1h?" \
-    --schema 'map_pid_to_duration:map' | jq .
-
-  When stdout is piped (e.g. to jq), ALL status messages (session creation,
-  upload confirmations, view URL) are automatically redirected to stderr so
-  only the raw answer appears on stdout. You can suppress stderr entirely:
-
-    ps aux | dx ask "Is there a runaway process?" \
-      --schema 'action:str,pid:int,reason:str' 2>/dev/null | jq .
-
-  Capture in a variable for scripting:
-    RESULT=$(ps aux | dx ask "runaway process?" --schema 'action:str,pid:int' 2>/dev/null)
-    ACTION=$(echo "$RESULT" | jq -r .action)
+Piped output:
+  When stdout is piped (e.g. to jq), status messages are automatically
+  redirected to stderr so only the answer appears on stdout.
 
 Role and Hooks:
   If you have configured a role (via 'dx set-role'), it will be sent
@@ -87,91 +73,82 @@ Examples:
   ps aux --sort=-%mem | head -20 | dx ask "which processes need attention?"
   netstat -an | dx ask "are there any unusual connections?"
   lsof -i | dx ask
-  dx ask "test query" --profile=staging
-  ps -eo pid,etime,pcpu,comm | dx ask "runaway process?" --schema 'action:str,pid:int,reason:str' 2>/dev/null | jq .
-  df -h | dx ask "disk usage summary" --schema 'critical:list,warning:list' 2>/dev/null | jq .`,
+  dx ask "test query" --profile=staging`,
 	Example: `  # Ask a single question
   dx ask "what processes are using the most memory?"
 
   # Pipe data for analysis
   ps aux | dx ask "which processes need attention?"
 
-  # Structured output for scripting
-  df -h | dx ask "disk usage?" --schema 'critical:list' 2>/dev/null | jq .
+  # Start a fresh session
+  dx ask --new "ignore previous context"
 
   # Interactive mode
   dx ask`,
-	GroupID: "usage",
-	Run:     runAsk,
+	Run: runAsk,
 }
 
 var askSessionFlag string
 var askTimeoutFlag int
-var askSchemaFlag string
+var askNewFlag bool
 
 func init() {
 	rootCmd.AddCommand(askCmd)
 	askCmd.Flags().StringVarP(&askSessionFlag, "session", "s", "", "Session ID to use (creates one if not specified)")
 	askCmd.Flags().IntVar(&askTimeoutFlag, "timeout", 0, "Maximum total seconds to wait for complete response (0 = no limit)")
-	askCmd.Flags().StringVar(&askSchemaFlag, "schema", "", "Expected output structure as comma-separated name:type pairs (e.g. action:str,pid:int,reason:str). Valid types: str, int, bool, float, map, list")
+	askCmd.Flags().BoolVar(&askNewFlag, "new", false, "Start a new session (ignore any existing session)")
 }
 
-// parseSchema parses a simplified schema string like "action:str,pid:int,reason:str"
-// into a JSON object string like {"action":"str","pid":"int","reason":"str"}.
-// Returns an error if any field is malformed or uses an unknown type.
-func parseSchema(s string) (string, error) {
-	validTypes := map[string]bool{
-		"str": true, "int": true, "bool": true,
-		"float": true, "map": true, "list": true,
+// ensureSession loads an existing session or creates a new one.
+// Returns the session state and whether a new session was created.
+func ensureSession(client *api.Client, profile string, preState *session.State, sw io.Writer) (*session.State, bool) {
+	state := preState
+	if state == nil || state.Profile != profile {
+		var err error
+		state, err = session.LoadCurrent(profile)
+		if err != nil {
+			state = nil
+		}
 	}
 
-	fields := strings.Split(s, ",")
-	result := make(map[string]string, len(fields))
-	for _, field := range fields {
-		field = strings.TrimSpace(field)
-		if field == "" {
-			continue
+	reusing := state != nil && state.Profile == profile && !state.IsExpired() && !askNewFlag
+
+	if reusing {
+		age := time.Since(state.LastMessageAt)
+		if state.LastMessageAt.IsZero() {
+			age = time.Since(state.CreatedAt)
 		}
-		parts := strings.SplitN(field, ":", 2)
-		if len(parts) != 2 {
-			return "", fmt.Errorf("invalid schema field %q (expected name:type)", field)
-		}
-		name := strings.TrimSpace(parts[0])
-		typ := strings.TrimSpace(parts[1])
-		if name == "" {
-			return "", fmt.Errorf("invalid schema field %q (name is empty)", field)
-		}
-		if !validTypes[typ] {
-			return "", fmt.Errorf("unknown type %q in schema field %q (valid types: str, int, bool, float, map, list)", typ, name)
-		}
-		result[name] = typ
+		fmt.Fprintf(sw, "Continuing session (%s ago)\n", formatDuration(age))
+		logging.Debug("Session loaded", "id", state.SessionID, "profile", profile)
+		return state, false
 	}
 
-	if len(result) == 0 {
-		return "", fmt.Errorf("schema is empty")
-	}
-
-	data, err := json.Marshal(result)
+	fmt.Fprintln(sw, "Creating session...")
+	resp, err := client.CreateSession(&api.SessionRequest{Mode: "ask"})
 	if err != nil {
-		return "", fmt.Errorf("failed to encode schema: %w", err)
+		fmt.Fprintf(os.Stderr, "Error creating session: %v\n", err)
+		os.Exit(1)
 	}
-	return string(data), nil
+	state = &session.State{
+		SessionID:     resp.SessionID,
+		Profile:       profile,
+		URL:           resp.URL,
+		PresignedURLs: resp.PresignedURLs,
+		CreatedAt:     time.Now(),
+	}
+	session.Save(state)
+	session.SetCurrentSessionID(state.SessionID, profile)
+	logging.Debug("Session created", "id", resp.SessionID, "profile", profile)
+	return state, true
 }
 
 func runAsk(cmd *cobra.Command, args []string) {
 	profile := GetProfile()
 
-	// Check config and auth
-	cfg, err := config.Load(profile)
-	if err != nil {
-		if profile == config.DefaultProfile {
-			fmt.Fprintln(os.Stderr, "Error: No configuration found. Run 'dx config' first.")
-		} else {
-			fmt.Fprintf(os.Stderr, "Error: Profile '%s' not found. Run 'dx config --profile=%s' first.\n", profile, profile)
-		}
-		os.Exit(1)
-	}
+	// Check config and auth (env vars → config file → interactive bootstrap)
+	cfg := LoadOrBootstrap(profile)
 
+	var err error
 	cfg, err = EnsureAuth(cfg, profile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -253,25 +230,11 @@ func runAsk(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	// Validate and parse --schema flag early so we error before any network call.
-	var parsedSchema string
-	if askSchemaFlag != "" {
-		var err error
-		parsedSchema, err = parseSchema(askSchemaFlag)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: invalid --schema: %v\n", err)
-			os.Exit(1)
-		}
-	}
-
 	// Determine mode: interactive or non-interactive
 	if len(args) > 0 {
 		question := strings.Join(args, " ")
-		runNonInteractiveAsk(cfg, profile, question, parsedSchema, explicitState)
+		runNonInteractiveAsk(cfg, profile, question, explicitState)
 	} else {
-		if parsedSchema != "" {
-			fmt.Fprintln(os.Stderr, "Warning: --schema is only supported in non-interactive mode (when a question is provided as an argument).")
-		}
 		runInteractiveAsk(cfg, profile, explicitState)
 	}
 }
@@ -288,33 +251,7 @@ func uploadPipedData(cfg *config.Config, profile string, data []byte, preState *
 	logging.Debug("Uploading piped data", "size", len(data), "profile", profile)
 	client := api.NewClient(cfg)
 
-	// Use the explicit state when provided; otherwise fall back to the
-	// per-profile current_session pointer.
-	state := preState
-	if state == nil || state.Profile != profile {
-		var err error
-		state, err = session.LoadCurrent(profile)
-		if err != nil || state == nil || state.Profile != profile {
-			fmt.Fprintln(os.Stderr, "Creating session...")
-			resp, err := client.CreateSession(&api.SessionRequest{
-				Mode: "ask",
-			})
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error creating session: %v\n", err)
-				os.Exit(1)
-			}
-
-			state = &session.State{
-				SessionID:     resp.SessionID,
-				Profile:       profile,
-				URL:           resp.URL,
-				PresignedURLs: resp.PresignedURLs,
-				CreatedAt:     time.Now(),
-			}
-			session.Save(state)
-			session.SetCurrentSessionID(state.SessionID, profile)
-		}
-	}
+	state, _ := ensureSession(client, profile, preState, os.Stderr)
 
 	availableURLs := state.GetAvailableURLCount()
 	if availableURLs <= 0 {
@@ -372,7 +309,7 @@ func formatByteSize(bytes int) string {
 	}
 }
 
-func runNonInteractiveAsk(cfg *config.Config, profile string, question string, outputSchema string, preState *session.State) {
+func runNonInteractiveAsk(cfg *config.Config, profile string, question string, preState *session.State) {
 	_, span := telemetry.StartSpan(context.Background(), "dx.ask",
 		attribute.String("mode", "non-interactive"),
 		attribute.String("profile", profile),
@@ -383,42 +320,10 @@ func runNonInteractiveAsk(cfg *config.Config, profile string, question string, o
 
 	sw := statusWriter()
 
-	// Use the explicit (in-memory) state when caller provided one (e.g. via
-	// --session). Falling back to LoadCurrent() reads a process-global
-	// pointer file that races across parallel `dx ask -s` invocations.
-	state := preState
-	var err error
-	if state == nil || state.Profile != profile {
-		state, err = session.LoadCurrent(profile)
-	}
-	if err != nil || state == nil || state.Profile != profile {
-		// Auto-create a session for non-interactive mode
-		fmt.Fprintln(sw, "Creating session...")
-		resp, err := client.CreateSession(&api.SessionRequest{
-			Mode: "ask",
-		})
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating session: %v\n", err)
-			os.Exit(1)
-		}
-
-		state = &session.State{
-			SessionID:      resp.SessionID,
-			Profile:        profile,
-			URL:            resp.URL,
-			PresignedURLs:  resp.PresignedURLs,
-			CreatedAt:      time.Now(),
-			RoleSent:       false,
-			LastHookOutput: "",
-		}
-		session.Save(state)
-		session.SetCurrentSessionID(state.SessionID, profile)
-		logging.Debug("Session created", "id", resp.SessionID, "profile", profile)
-
-		fmt.Fprintf(sw, "Session: %s\n", resp.SessionID)
+	state, isNew := ensureSession(client, profile, preState, sw)
+	if isNew {
+		fmt.Fprintf(sw, "Session: %s\n", state.SessionID)
 		fmt.Fprintln(sw)
-	} else {
-		logging.Debug("Session loaded", "id", state.SessionID, "profile", profile)
 	}
 
 	// Send role if not sent yet
@@ -475,7 +380,7 @@ func runNonInteractiveAsk(cfg *config.Config, profile string, question string, o
 	}
 
 	// Now send the message (after stream is connected)
-	if err := client.SendMessage(state.SessionID, message, "", outputSchema); err != nil {
+	if err := client.SendMessage(state.SessionID, message, "", ""); err != nil {
 		fmt.Fprintln(os.Stderr, color.Error(fmt.Sprintf("✗ Failed to send message: %v", err)))
 		cancel()
 		os.Exit(1)
@@ -489,6 +394,9 @@ func runNonInteractiveAsk(cfg *config.Config, profile string, question string, o
 		fmt.Println()
 	}
 	streamResponseWithTimeout(events, errors, cancel, askTimeoutFlag)
+
+	state.LastMessageAt = time.Now()
+	session.Save(state)
 
 	// Show view URL — goes to stderr when stdout is captured so it doesn't
 	// pollute the captured answer.
@@ -514,31 +422,7 @@ func runInteractiveAsk(cfg *config.Config, profile string, preState *session.Sta
 
 	client := api.NewClient(cfg)
 
-	// Use the explicit (in-memory) state when caller provided one (e.g. via
-	// --session). Falling back to LoadCurrent() reads a process-global
-	// pointer file that races across parallel `dx ask -s` invocations.
-	state := preState
-	var err error
-	if state == nil || state.Profile != profile {
-		state, err = session.LoadCurrent(profile)
-	}
-	if err != nil || state == nil || state.Profile != profile {
-		fmt.Println("Creating session...")
-		resp, err := client.CreateSession(&api.SessionRequest{Mode: "ask"})
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating session: %v\n", err)
-			os.Exit(1)
-		}
-		state = &session.State{
-			SessionID:     resp.SessionID,
-			Profile:       profile,
-			URL:           resp.URL,
-			PresignedURLs: resp.PresignedURLs,
-			CreatedAt:     time.Now(),
-		}
-		session.Save(state)
-		session.SetCurrentSessionID(state.SessionID, profile)
-	}
+	state, _ := ensureSession(client, profile, preState, os.Stdout)
 
 	// Send role if not sent yet
 	if cfg.Role != "" && !state.RoleSent {
@@ -672,6 +556,9 @@ func runInteractiveAsk(cfg *config.Config, profile string, preState *session.Sta
 		fmt.Println()
 		streamResponseWithTimeout(events, errors, cancel, askTimeoutFlag)
 		fmt.Println()
+
+		state.LastMessageAt = time.Now()
+		session.Save(state)
 	}
 }
 

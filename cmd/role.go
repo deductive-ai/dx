@@ -64,9 +64,9 @@ func runSetRole(cmd *cobra.Command, args []string) {
 	cfg, err := config.Load(profile)
 	if err != nil {
 		if profile == config.DefaultProfile {
-			fmt.Fprintln(os.Stderr, "Error: No configuration found. Run 'dx config' first.")
+			fmt.Fprintln(os.Stderr, "Error: No configuration found. Run 'dx ask' to get started.")
 		} else {
-			fmt.Fprintf(os.Stderr, "Error: Profile '%s' not found. Run 'dx config --profile=%s' first.\n", profile, profile)
+			fmt.Fprintf(os.Stderr, "Error: Profile '%s' not found. Run 'dx ask --profile=%s' to set it up.\n", profile, profile)
 		}
 		os.Exit(1)
 	}
@@ -116,7 +116,7 @@ func runSetRole(cmd *cobra.Command, args []string) {
 
 	if err := editorCmd.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error running editor '%s': %v\n", editor, err)
-		fmt.Fprintln(os.Stderr, "You can set your preferred editor with: dx config --editor=<name>")
+		fmt.Fprintln(os.Stderr, "Set $EDITOR or run: dx config --editor=<name>")
 		os.Exit(1)
 	}
 
@@ -155,9 +155,9 @@ func runGetRole(cmd *cobra.Command, args []string) {
 	cfg, err := config.Load(profile)
 	if err != nil {
 		if profile == config.DefaultProfile {
-			fmt.Fprintln(os.Stderr, "Error: No configuration found. Run 'dx config' first.")
+			fmt.Fprintln(os.Stderr, "Error: No configuration found. Run 'dx ask' to get started.")
 		} else {
-			fmt.Fprintf(os.Stderr, "Error: Profile '%s' not found. Run 'dx config --profile=%s' first.\n", profile, profile)
+			fmt.Fprintf(os.Stderr, "Error: Profile '%s' not found. Run 'dx ask --profile=%s' to set it up.\n", profile, profile)
 		}
 		os.Exit(1)
 	}
@@ -200,44 +200,4 @@ func removeCommentLines(text string) string {
 
 	// Trim leading/trailing whitespace
 	return strings.TrimSpace(string(result))
-}
-
-// OpenEditorForRole opens the configured editor and returns the content entered
-func OpenEditorForRole(cfg *config.Config, existingContent string) (string, error) {
-	// Create temp file
-	tmpFile, err := os.CreateTemp("", "dx-role-*.txt")
-	if err != nil {
-		return "", fmt.Errorf("failed to create temp file: %w", err)
-	}
-	tmpPath := tmpFile.Name()
-	defer os.Remove(tmpPath)
-
-	// Write existing content to temp file
-	if existingContent != "" {
-		if _, err := tmpFile.WriteString(existingContent); err != nil {
-			return "", fmt.Errorf("failed to write to temp file: %w", err)
-		}
-	}
-	tmpFile.Close()
-
-	// Get editor
-	editor := cfg.GetEditor()
-
-	// Open editor
-	editorCmd := exec.Command(editor, tmpPath)
-	editorCmd.Stdin = os.Stdin
-	editorCmd.Stdout = os.Stdout
-	editorCmd.Stderr = os.Stderr
-
-	if err := editorCmd.Run(); err != nil {
-		return "", fmt.Errorf("failed to run editor '%s': %w", editor, err)
-	}
-
-	// Read content from temp file
-	content, err := os.ReadFile(tmpPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read temp file: %w", err)
-	}
-
-	return string(content), nil
 }

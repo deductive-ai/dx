@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/deductive-ai/dx/internal/api"
+	"github.com/deductive-ai/dx/internal/color"
 	"github.com/deductive-ai/dx/internal/config"
 	"github.com/deductive-ai/dx/internal/logging"
 	"github.com/spf13/cobra"
@@ -23,25 +24,19 @@ import (
 
 var authCmd = &cobra.Command{
 	Use:   "auth",
-	Short: "Re-authenticate or get API key instructions",
-	Long: `Re-authenticate (OAuth) or see how to update your API key.
+	Short: "Authenticate with Deductive",
+	Long: `Re-authenticate with your Deductive instance.
 
-This command does not configure auth from scratch. Use 'dx config' to set
-endpoint and auth mode (OAuth or API key). Then:
-
-  - If the profile uses OAuth: 'dx auth' runs the device flow so you can
-    sign in again in the browser and refresh tokens.
-  - If the profile uses API key: 'dx auth' prints instructions to generate
-    a new key in the Deductive app and set it with 'dx config --api-key=<key>'.
+For OAuth profiles, this runs the browser-based device flow.
+For API key profiles, this prints instructions to update your key.
 
 Examples:
-  dx auth                    # Re-auth default profile (OAuth) or show API key instructions
-  dx auth --profile=staging  # Same for staging profile`,
+  dx auth
+  dx auth --profile=staging`,
 	Run: runAuth,
 }
 
 func init() {
-	authCmd.Hidden = true
 	rootCmd.AddCommand(authCmd)
 }
 
@@ -50,16 +45,14 @@ func runAuth(cmd *cobra.Command, args []string) {
 
 	cfg, err := config.Load(profile)
 	if err != nil {
-		if profile == config.DefaultProfile {
-			fmt.Fprintln(os.Stderr, "Error: No configuration found. Run 'dx config' first.")
-		} else {
-			fmt.Fprintf(os.Stderr, "Error: Profile '%s' not found. Run 'dx config --profile=%s' first.\n", profile, profile)
-		}
+		fmt.Fprintf(os.Stderr, "%s No configuration found.\n", color.Error("✗"))
+		fmt.Fprintf(os.Stderr, "Run %s to set up the CLI first.\n", color.Command("dx ask"))
 		os.Exit(1)
 	}
 
 	if cfg.Endpoint == "" {
-		fmt.Fprintln(os.Stderr, "Error: No endpoint configured. Run 'dx config' first.")
+		fmt.Fprintf(os.Stderr, "%s No endpoint configured.\n", color.Error("✗"))
+		fmt.Fprintf(os.Stderr, "Run %s to set up the CLI first.\n", color.Command("dx ask"))
 		os.Exit(1)
 	}
 
@@ -73,16 +66,12 @@ func runAuth(cmd *cobra.Command, args []string) {
 		}
 	case "apikey":
 		fmt.Println("This profile uses API key authentication.")
-		fmt.Println("API keys cannot be re-issued. To use a new key:")
-		fmt.Println("  1) Generate one in the Deductive app (e.g. Settings → API Keys).")
-		if profile == config.DefaultProfile {
-			fmt.Println("  2) Run: dx config --api-key=<new_key>")
-		} else {
-			fmt.Printf("  2) Run: dx config --profile=%s --api-key=<new_key>\n", profile)
-		}
+		fmt.Println("To update your key:")
+		fmt.Println("  1) Generate a new key in Settings > API Keys")
+		fmt.Printf("  2) Run: %s\n", color.Command("dx ask"))
 	default:
-		fmt.Fprintln(os.Stderr, "Error: No auth mode configured for this profile.")
-		fmt.Fprintln(os.Stderr, "Run 'dx config' to set endpoint and auth mode (oauth or apikey).")
+		fmt.Fprintf(os.Stderr, "%s No auth method configured.\n", color.Error("✗"))
+		fmt.Fprintf(os.Stderr, "Run %s to set up the CLI.\n", color.Command("dx ask"))
 		os.Exit(1)
 	}
 }
@@ -127,10 +116,9 @@ func authenticateWithOAuth(client *api.Client, profile string) error {
 	}
 
 	fmt.Println()
-	fmt.Printf("To authorize the CLI, visit:\n")
-	fmt.Printf("  %s\n\n", resp.VerificationURIComplete)
-	fmt.Printf("Or go to %s and enter code: %s\n\n", resp.VerificationURI, resp.UserCode)
-	fmt.Println("Waiting for authorization...")
+	openBrowserOrPrint(resp.VerificationURIComplete)
+	fmt.Printf("\n  Or go to %s and enter code: %s\n\n", resp.VerificationURI, resp.UserCode)
+	fmt.Println("  Waiting for authorization...")
 
 	token, err := client.PollForToken(resp.DeviceCode, resp.Interval)
 	if err != nil {

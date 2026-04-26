@@ -20,6 +20,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/deductive-ai/dx/internal/color"
@@ -78,6 +80,12 @@ func Check(currentVersion string, profile string) {
 			fmt.Fprintln(os.Stderr, "  curl https://app.deductive.ai/cli/install | bash")
 			osExit(1)
 		}
+	}
+
+	if !SuppressHint && cache.Latest != "" && CompareVersions(cache.Latest, currentVersion) > 0 {
+		fmt.Fprintf(os.Stderr, "%s\n", color.Muted(
+			"A newer version of dx is available ("+cache.Latest+"). Run 'dx upgrade' to update.",
+		))
 	}
 }
 
@@ -216,4 +224,31 @@ func writeCache(path string, cache *versionCache) error {
 		return fmt.Errorf("renaming temp cache file: %w", err)
 	}
 	return nil
+}
+
+// SuppressHint disables the upgrade nudge (set by dx upgrade before Check runs).
+var SuppressHint bool
+
+// CompareVersions compares two semver strings (major.minor.patch).
+// Returns -1 if a < b, 0 if equal, 1 if a > b.
+func CompareVersions(a, b string) int {
+	aParts := strings.Split(a, ".")
+	bParts := strings.Split(b, ".")
+
+	for i := 0; i < 3; i++ {
+		av, bv := 0, 0
+		if i < len(aParts) {
+			av, _ = strconv.Atoi(aParts[i])
+		}
+		if i < len(bParts) {
+			bv, _ = strconv.Atoi(bParts[i])
+		}
+		if av < bv {
+			return -1
+		}
+		if av > bv {
+			return 1
+		}
+	}
+	return 0
 }

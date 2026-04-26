@@ -29,6 +29,7 @@ var (
 )
 
 var profileFlag string
+var profileExplicit bool
 var versionFlag bool
 var noColorFlag bool
 var debugFlag bool
@@ -37,19 +38,14 @@ var rootCmd = &cobra.Command{
 	Use:   "dx",
 	Short: "CLI for Deductive AI — ask questions about your infrastructure",
 	Long: `DX is the command-line interface for Deductive AI.
-Ask questions about your infrastructure, investigate issues,
-and get AI-powered insights — all from the terminal.
+Ask questions about your infrastructure, pipe in data, get answers.
 
-Get started:
-  dx init                                       # One-command setup
-  dx ask "what's using the most memory?"         # Ask a question
-  ps aux | dx ask "which process needs attention?" # Pipe data in
+  dx ask "what's using the most memory?"
+  ps aux | dx ask "which process needs attention?"
 
-Profiles:
-  Use --profile to manage multiple Deductive instances.
-  dx init --profile=staging
-  dx ask "test query" --profile=staging`,
+Environment variables: DX_API_KEY, DX_ENDPOINT, DX_PROFILE (for CI / scripts)`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		profileExplicit = cmd.Flags().Changed("profile")
 		if noColorFlag {
 			color.SetEnabled(false)
 		}
@@ -68,10 +64,10 @@ Profiles:
 }
 
 var versionCmd = &cobra.Command{
-	Use:     "version",
-	Short:   "Print the CLI version",
-	Long:    `Print the version, git commit, and build date of the DX CLI.`,
-	GroupID: "advanced",
+	Use:    "version",
+	Short:  "Print the CLI version",
+	Long:   `Print the version, git commit, and build date of the DX CLI.`,
+	Hidden: true,
 	Run: func(cmd *cobra.Command, args []string) {
 		printVersion()
 	},
@@ -93,13 +89,6 @@ func Execute() {
 	}
 }
 
-// Command groups for organized help output
-var (
-	groupGettingStarted = cobra.Group{ID: "getting-started", Title: "Getting Started:"}
-	groupUsage          = cobra.Group{ID: "usage", Title: "Usage:"}
-	groupAdvanced       = cobra.Group{ID: "advanced", Title: "Advanced:"}
-)
-
 func init() {
 	rootCmd.PersistentFlags().StringVar(&profileFlag, "profile", config.DefaultProfile,
 		"Configuration profile to use (default: \"default\")")
@@ -109,21 +98,22 @@ func init() {
 		"Enable debug logging (also respects DX_DEBUG env var)")
 	rootCmd.Flags().BoolVarP(&versionFlag, "version", "V", false, "Print version information")
 
-	rootCmd.AddGroup(&groupGettingStarted, &groupUsage, &groupAdvanced)
 	rootCmd.AddCommand(versionCmd)
 
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
 }
 
-// HideCommand marks a command as hidden (still functional, not shown in help).
-func HideCommand(cmd *cobra.Command) {
-	cmd.Hidden = true
-}
-
-// GetProfile returns the current profile from the global flag
+// GetProfile returns the active profile using the precedence chain:
+// --profile flag > DX_PROFILE env var > ~/.dx/active_profile > "default"
 func GetProfile() string {
-	if profileFlag == "" {
-		return config.DefaultProfile
+	if profileExplicit {
+		return profileFlag
 	}
-	return profileFlag
+	if env := os.Getenv("DX_PROFILE"); env != "" {
+		return env
+	}
+	if active, err := config.ReadActiveProfile(); err == nil && active != "" {
+		return active
+	}
+	return config.DefaultProfile
 }

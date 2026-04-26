@@ -36,12 +36,13 @@ func validateProfileName(profile string) error {
 }
 
 const (
-	ConfigDirName   = ".dx"
-	ProfilesDirName = "profiles"
-	SessionsDirName = "sessions"
-	ConfigFileName  = "config"
+	ConfigDirName      = ".dx"
+	ProfilesDirName    = "profiles"
+	SessionsDirName    = "sessions"
+	ConfigFileName     = "config"
 	CurrentSessionFile = "current_session"
-	DefaultProfile  = "default"
+	ActiveProfileFile  = "active_profile"
+	DefaultProfile     = "default"
 )
 
 // Config represents a profile's configuration stored in ~/.dx/profiles/<profile>/config
@@ -139,6 +140,31 @@ func GetProfileCurrentSessionPath(profile string) (string, error) {
 		return "", err
 	}
 	return filepath.Join(profileDir, CurrentSessionFile), nil
+}
+
+// ReadActiveProfile reads the active profile name from ~/.dx/active_profile.
+func ReadActiveProfile() (string, error) {
+	configDir, err := GetConfigDir()
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(filepath.Join(configDir, ActiveProfileFile))
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(data)), nil
+}
+
+// WriteActiveProfile writes the active profile name to ~/.dx/active_profile.
+func WriteActiveProfile(profile string) error {
+	if err := EnsureConfigDir(); err != nil {
+		return err
+	}
+	configDir, err := GetConfigDir()
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(configDir, ActiveProfileFile), []byte(profile+"\n"), 0644)
 }
 
 // EnsureConfigDir creates the config directory structure if it doesn't exist
