@@ -80,4 +80,4 @@ dx ask "test query" --profile=staging
 
 ## License
 
-Copyright (c) 2025 Deductive AI, Inc. All rights reserved.
+Apache License 2.0 -- see [LICENSE](LICENSE) for details.
