@@ -8,6 +8,11 @@ dist/
 *.swp
 *.swo
 
+# Secrets
+.env
+.env.*
+*.env
+
 # OS
 .DS_Store
 Thumbs.db

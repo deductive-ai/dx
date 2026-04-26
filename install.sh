@@ -62,8 +62,7 @@ main() {
     echo "dx ${version} installed to ${INSTALL_DIR}/${BINARY}"
     echo ""
     echo "Get started:"
-    echo "  dx init    # configure endpoint and authenticate"
-    echo "  dx ask     # ask your first question"
+    echo "  dx ask     # set up and ask your first question"
 }
 
 main
