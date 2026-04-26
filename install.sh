@@ -3,7 +3,7 @@ set -e
 
 REPO="deductive-ai/dx"
 BINARY="dx"
-INSTALL_DIR="/usr/local/bin"
+INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 
 main() {
     os=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -47,9 +47,14 @@ main() {
 
     if [ -w "$INSTALL_DIR" ]; then
         mv "${tmpdir}/${BINARY}" "${INSTALL_DIR}/${BINARY}"
-    else
+    elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
         echo "Installing to ${INSTALL_DIR} (requires sudo)..."
         sudo mv "${tmpdir}/${BINARY}" "${INSTALL_DIR}/${BINARY}"
+    else
+        INSTALL_DIR="${HOME}/.local/bin"
+        mkdir -p "$INSTALL_DIR"
+        mv "${tmpdir}/${BINARY}" "${INSTALL_DIR}/${BINARY}"
+        echo "Note: installed to ${INSTALL_DIR} (add to PATH if needed)"
     fi
 
     chmod +x "${INSTALL_DIR}/${BINARY}"
