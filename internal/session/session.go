@@ -26,6 +26,7 @@ type State struct {
 	URL           string    `json:"url"`
 	CreatedAt     time.Time `json:"created_at"`
 	LastMessageAt time.Time `json:"last_message_at"`
+	FirstQuestion string    `json:"first_question,omitempty"`
 }
 
 const DefaultSessionTTL = 30 * time.Minute

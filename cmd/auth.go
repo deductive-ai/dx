@@ -21,12 +21,11 @@ var authCmd = &cobra.Command{
 	Short: "Authenticate with Deductive",
 	Long: `Re-authenticate with your Deductive instance.
 
-For OAuth profiles, this runs the browser-based device flow.
-For API key profiles, this prints instructions to update your key.
+For OAuth, this runs the browser-based device flow.
+For API key auth, this prints instructions to update your key.
 
 Examples:
-  dx auth
-  dx auth --profile=staging`,
+  dx auth`,
 	Run: runAuth,
 }
 

@@ -35,9 +35,7 @@ var rootCmd = &cobra.Command{
 Ask questions about your infrastructure, pipe in data, get answers.
 
   dx ask "what's using the most memory?"
-  ps aux | dx ask "which process needs attention?"
-
-Environment variables: DX_API_KEY, DX_ENDPOINT, DX_PROFILE (for CI / scripts)`,
+  ps aux | dx ask "which process needs attention?"`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		profileExplicit = cmd.Flags().Changed("profile")
 		if noColorFlag {
@@ -77,6 +75,7 @@ func printVersion() {
 
 // Execute runs the root command
 func Execute() {
+	unhideAdvanced()
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -85,7 +84,8 @@ func Execute() {
 
 func init() {
 	rootCmd.PersistentFlags().StringVar(&profileFlag, "profile", config.DefaultProfile,
-		"Configuration profile to use (default: \"default\")")
+		"Configuration profile to use")
+	_ = rootCmd.PersistentFlags().MarkHidden("profile")
 	rootCmd.PersistentFlags().BoolVar(&noColorFlag, "no-color", false,
 		"Disable colored output (also respects NO_COLOR and DX_NO_COLOR env vars)")
 	rootCmd.PersistentFlags().BoolVar(&debugFlag, "debug", false,
@@ -95,6 +95,17 @@ func init() {
 	rootCmd.AddCommand(versionCmd)
 
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
+}
+
+// unhideAdvanced reveals internal commands and flags when DX_ADVANCED is set.
+func unhideAdvanced() {
+	if os.Getenv("DX_ADVANCED") == "" {
+		return
+	}
+	profileCmd.Hidden = false
+	statusCmd.Hidden = false
+	_ = rootCmd.PersistentFlags().SetAnnotation("profile", cobra.BashCompOneRequiredFlag, []string{""})
+	rootCmd.PersistentFlags().Lookup("profile").Hidden = false
 }
 
 // GetProfile returns the active profile using the precedence chain:

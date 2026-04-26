@@ -27,12 +27,6 @@ dx upgrade
 
 Running `dx ask` on a fresh install auto-bootstraps: prompts for endpoint URL, then either paste a `dak_...` API key or press Enter for OAuth device-code flow.
 
-For CI / scripts, skip interactive setup entirely with environment variables:
-
-```bash
-DX_API_KEY=dak_xxx DX_ENDPOINT=https://acme.deductive.ai dx ask "status?"
-```
-
 ## Commands
 
 ### dx ask [question]
@@ -67,50 +61,35 @@ dx ask --timeout 60 "long analysis"
 
 **Session behavior:** sessions auto-expire after 30 minutes of inactivity. When reusing an existing session, dx prints "Continuing session (X ago)". Use `--new` to start fresh.
 
-**Piped input:** when stdin is not a TTY, dx reads it, uploads as context, then opens `/dev/tty` for interactive follow-ups (or runs one-shot if a question argument is provided).
+**Piped input:** when stdin is not a TTY, dx reads it as additional context for the question.
 
 **Interactive commands (inside `dx ask`):**
 
 | Command | Description |
 |---------|-------------|
 | `/upload <path>` | Attach a text file to the current session |
+| `/resume` | List recent sessions and switch to one |
 | `/help` | Show available commands |
 | `exit` | End the session |
 
-### dx profile
+### dx config
 
-Manage named profiles (each with its own endpoint, auth, sessions).
+View or change settings.
 
 ```bash
-# List profiles (* marks active)
-dx profile
+# Show current configuration
+dx config
 
-# Create a profile (defaults to OAuth)
-dx profile create staging --endpoint=https://staging.deductive.ai
+# Re-run setup wizard (change endpoint or auth)
+dx config setup
 
-# Create a profile with API key auth
-dx profile create staging --endpoint=https://staging.deductive.ai --api-key=dak_xxxxx
-
-# Skip endpoint validation (e.g. local dev)
-dx profile create local --endpoint=http://localhost:8081 --api-key=dak_xxxxx --no-validate
-
-# Switch active profile
-dx profile use staging
-
-# Delete a profile
-dx profile delete --profile=staging
+# Reset all configuration (re-setup on next dx ask)
+dx config reset
 ```
-
-**`dx profile create` flags:**
-- `--endpoint`, `-e` -- Deductive endpoint URL (required)
-- `--api-key` -- API key (uses apikey auth; omit for OAuth)
-- `--no-validate` -- skip endpoint connectivity check
-
-**Profile precedence:** `--profile` flag > `DX_PROFILE` env var > `~/.dx/active_profile` file > `"default"`
 
 ### dx auth
 
-Re-authenticate the current profile (OAuth device flow or API key refresh).
+Re-authenticate (OAuth device flow or API key instructions).
 
 ```bash
 dx auth
@@ -146,21 +125,8 @@ dx skill print
 
 ## Global flags
 
-These work on every command:
-
-- `--profile` -- select a named profile (overrides `DX_PROFILE` and active profile)
 - `--no-color` -- disable color output (also `NO_COLOR` or `DX_NO_COLOR` env vars)
 - `--debug` -- enable debug logging (also `DX_DEBUG` env var)
-
-## Environment variables
-
-| Variable | Purpose |
-|----------|---------|
-| `DX_API_KEY` | API key for non-interactive auth (CI/scripts) |
-| `DX_ENDPOINT` | Endpoint URL for non-interactive auth |
-| `DX_PROFILE` | Override active profile name |
-| `DX_DEBUG` | Enable debug logging |
-| `DX_NO_COLOR` / `NO_COLOR` | Disable color output |
 
 ## Key workflows
 
@@ -175,21 +141,6 @@ dx ask "what's the error rate on the payments service?"
 ```bash
 kubectl logs deploy/api --tail=100 | dx ask "summarize errors"
 docker stats --no-stream | dx ask "which containers need attention?"
-```
-
-### Multi-environment investigation
-
-```bash
-dx ask --profile=production "is the API healthy?"
-dx ask --profile=staging "compare latency to production"
-```
-
-### CI / automation
-
-```bash
-export DX_API_KEY=dak_xxx
-export DX_ENDPOINT=https://acme.deductive.ai
-dx ask "nightly health check -- any anomalies in the last 24h?"
 ```
 
 ### Attach a file and ask
@@ -208,13 +159,13 @@ dx> analyze this thread dump for deadlocks
 
 ```
 ~/.dx/
-  active_profile          # name of the active profile
+  active_profile          # internal: active configuration name
   history                 # readline history for interactive mode
   version_cache.json      # cached version check (1h TTL)
   profiles/
-    <profile>/
-      config              # TOML: endpoint, auth_mode, tokens
+    default/
+      config              # TOML: endpoint, auth tokens
       current_session     # pointer to active session ID
   sessions/
-    <session-id>          # JSON: session state (encrypted URLs)
+    <session-id>          # JSON: session state
 ```

@@ -78,6 +78,7 @@ Examples:
 }
 
 func init() {
+	profileCmd.Hidden = true
 	rootCmd.AddCommand(profileCmd)
 	profileCmd.AddCommand(profileCreateCmd)
 	profileCmd.AddCommand(profileDeleteCmd)

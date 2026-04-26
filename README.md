@@ -36,8 +36,8 @@ dx ask "what services are unhealthy right now?"
 # Pipe data for analysis
 kubectl get pods -A | dx ask "which pods are in trouble?"
 
-# For CI / scripts, use environment variables
-DX_API_KEY=dak_xxx DX_ENDPOINT=https://acme.deductive.ai dx ask "status?"
+# Interactive session (multi-turn)
+dx ask
 ```
 
 ## Commands
@@ -46,20 +46,25 @@ DX_API_KEY=dak_xxx DX_ENDPOINT=https://acme.deductive.ai dx ask "status?"
 |---------|-------------|
 | `dx ask` | Ask Deductive a question (setup on first use) |
 | `dx auth` | Re-authenticate |
-| `dx profile` | List and manage profiles |
-| `dx profile create` | Create a profile with endpoint and auth |
-| `dx skill install` | Install SKILL.md for AI agent integration |
+| `dx config` | View or change settings |
 | `dx upgrade` | Upgrade to the latest version |
+| `dx skill install` | Install SKILL.md for AI agent integration |
 
 Run `dx --help` for full details.
 
 ## Configuration
 
-Configuration is stored in `~/.dx/profiles/<profile>/config` (TOML format).
+Configuration is stored in `~/.dx/` and managed via `dx config`.
 
 ```bash
-# Use a specific profile
-dx ask "test query" --profile=staging
+# View current settings
+dx config
+
+# Re-run setup wizard (change endpoint or auth)
+dx config setup
+
+# Reset all configuration (re-setup on next dx ask)
+dx config reset
 ```
 
 ## License

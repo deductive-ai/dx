@@ -4,12 +4,15 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -285,6 +288,9 @@ func runNonInteractiveAsk(cfg *config.Config, profile string, question string, p
 	streamResponseWithTimeout(events, errors, cancel, askTimeoutFlag)
 
 	state.LastMessageAt = time.Now()
+	if state.FirstQuestion == "" {
+		state.FirstQuestion = truncateQuestion(question, 80)
+	}
 	_ = session.Save(state)
 
 	// Show view URL — goes to stderr when stdout is captured so it doesn't
@@ -374,7 +380,11 @@ func runInteractiveAsk(cfg *config.Config, profile string, preState *session.Sta
 		}
 
 		if strings.HasPrefix(question, "/") {
-			handleSlashCommand(question, cfg, state)
+			if newState := handleSlashCommand(question, cfg, state, profile); newState != nil {
+				state = newState
+				fmt.Printf("Profile: %s | Session: %s\n", color.Info(profile), color.SessionID(state.SessionID))
+				fmt.Println()
+			}
 			continue
 		}
 
@@ -423,6 +433,9 @@ func runInteractiveAsk(cfg *config.Config, profile string, preState *session.Sta
 		fmt.Println()
 
 		state.LastMessageAt = time.Now()
+		if state.FirstQuestion == "" {
+			state.FirstQuestion = truncateQuestion(question, 80)
+		}
 		_ = session.Save(state)
 	}
 }
@@ -834,7 +847,7 @@ func uploadPathCompleter(line string, pos int) (string, []string, string) {
 	return cmdPrefix, candidates, line[pos:]
 }
 
-func handleSlashCommand(input string, cfg *config.Config, state *session.State) {
+func handleSlashCommand(input string, cfg *config.Config, state *session.State, profile string) *session.State {
 	parts := strings.Fields(input)
 	cmd := parts[0]
 
@@ -842,21 +855,25 @@ func handleSlashCommand(input string, cfg *config.Config, state *session.State) 
 	case "/upload":
 		if len(parts) < 2 {
 			fmt.Println(color.Error("Usage: /upload <file-path>"))
-			return
+			return nil
 		}
 		path := parts[1]
 		fmt.Printf("Uploading %s... ", filepath.Base(path))
 		if err := uploadFileToSession(cfg, state, path); err != nil {
 			fmt.Println(color.Error("✗"))
 			fmt.Fprintf(os.Stderr, "  %v\n", err)
-			return
+			return nil
 		}
 		fmt.Println(color.Success("✓"))
+
+	case "/resume":
+		return handleResume(cfg, state, profile)
 
 	case "/help":
 		fmt.Println()
 		fmt.Println("  Available commands:")
 		fmt.Printf("    %s   Attach a text file to the session\n", color.Command("/upload <path>"))
+		fmt.Printf("    %s           Switch to a previous session\n", color.Command("/resume"))
 		fmt.Printf("    %s              Show this help\n", color.Command("/help"))
 		fmt.Printf("    %s              End the session\n", color.Command("exit"))
 		fmt.Println()
@@ -864,6 +881,109 @@ func handleSlashCommand(input string, cfg *config.Config, state *session.State) 
 	default:
 		fmt.Printf("%s Unknown command: %s (type /help for available commands)\n", color.Error("✗"), cmd)
 	}
+	return nil
+}
+
+func handleResume(cfg *config.Config, currentState *session.State, profile string) *session.State {
+	sessions, err := session.ListForProfile(profile)
+	if err != nil || len(sessions) == 0 {
+		fmt.Println(color.Muted("  No previous sessions found."))
+		return nil
+	}
+
+	// Sort by last activity, most recent first
+	sort.Slice(sessions, func(i, j int) bool {
+		ti := sessions[i].LastMessageAt
+		if ti.IsZero() {
+			ti = sessions[i].CreatedAt
+		}
+		tj := sessions[j].LastMessageAt
+		if tj.IsZero() {
+			tj = sessions[j].CreatedAt
+		}
+		return ti.After(tj)
+	})
+
+	// Filter out the current session and limit to 10
+	var candidates []*session.State
+	for _, s := range sessions {
+		if s.SessionID == currentState.SessionID {
+			continue
+		}
+		candidates = append(candidates, s)
+		if len(candidates) >= 10 {
+			break
+		}
+	}
+
+	if len(candidates) == 0 {
+		fmt.Println(color.Muted("  No other sessions found."))
+		return nil
+	}
+
+	fmt.Println()
+	fmt.Println("  Recent sessions:")
+	for i, s := range candidates {
+		ref := s.LastMessageAt
+		if ref.IsZero() {
+			ref = s.CreatedAt
+		}
+		age := formatDuration(time.Since(ref))
+
+		label := s.SessionID[:8]
+		if s.FirstQuestion != "" {
+			label = fmt.Sprintf("%q", s.FirstQuestion)
+		}
+		fmt.Printf("  %d. %s ago — %s\n", i+1, age, label)
+	}
+	fmt.Println()
+
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Printf("Pick a session (1-%d), or press Enter to cancel: ", len(candidates))
+	choice, _ := reader.ReadString('\n')
+	choice = strings.TrimSpace(choice)
+
+	if choice == "" {
+		return nil
+	}
+
+	idx, err := strconv.Atoi(choice)
+	if err != nil || idx < 1 || idx > len(candidates) {
+		fmt.Println(color.Error("  Invalid choice."))
+		return nil
+	}
+
+	picked := candidates[idx-1]
+
+	client := api.NewClient(cfg)
+	resp, err := client.GetSession(picked.SessionID)
+	if err != nil {
+		fmt.Printf("%s Session no longer exists on server.\n", color.Error("✗"))
+		return nil
+	}
+
+	newState := &session.State{
+		SessionID:     resp.SessionID,
+		Profile:       profile,
+		URL:           resp.URL,
+		CreatedAt:     picked.CreatedAt,
+		LastMessageAt: picked.LastMessageAt,
+		FirstQuestion: picked.FirstQuestion,
+	}
+	_ = session.Save(newState)
+	_ = session.SetCurrentSessionID(newState.SessionID, profile)
+
+	fmt.Printf("%s Switched to session %s\n", color.Success("✓"), color.SessionID(newState.SessionID))
+	return newState
+}
+
+func truncateQuestion(q string, maxLen int) string {
+	q = strings.Split(q, "\n")[0]
+	q = strings.TrimSpace(q)
+	if len(q) > maxLen {
+		return q[:maxLen-3] + "..."
+	}
+	return q
 }
 
 // formatProgressReport formats a progress report with a left border.
