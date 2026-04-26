@@ -64,6 +64,14 @@ dx ask --timeout 60 "long analysis"
 
 **Piped input:** when stdin is not a TTY, dx reads it, uploads as context, then opens `/dev/tty` for interactive follow-ups (or runs one-shot if a question argument is provided).
 
+**Interactive commands (inside `dx ask`):**
+
+| Command | Description |
+|---------|-------------|
+| `/upload <path>` | Attach a text file to the current session |
+| `/help` | Show available commands |
+| `exit` | End the session |
+
 ### dx profile
 
 Manage named profiles (each with its own endpoint, auth, sessions).
@@ -96,27 +104,6 @@ dx profile delete --profile=staging
 - `--no-validate` -- skip endpoint connectivity check
 
 **Profile precedence:** `--profile` flag > `DX_PROFILE` env var > `~/.dx/active_profile` file > `"default"`
-
-### dx upload
-
-Upload files or stdin as context for the current session.
-
-```bash
-# Upload a file
-dx upload -f /path/to/logs.txt
-
-# Upload a directory recursively
-dx upload -f ./configs -r
-
-# Upload from stdin
-some-command | dx upload --stdin --name output.txt
-```
-
-**Flags:**
-- `-f`, `--file` -- file or directory path
-- `-r`, `--recursive` -- upload directory contents
-- `--stdin` -- read from stdin
-- `--name` -- filename for stdin content (default: `stdin.txt`)
 
 ### dx auth
 
@@ -202,11 +189,16 @@ export DX_ENDPOINT=https://acme.deductive.ai
 dx ask "nightly health check -- any anomalies in the last 24h?"
 ```
 
-### Attach files then ask
+### Attach a file and ask
 
 ```bash
-dx upload -f ./thread-dump.txt
-dx ask "analyze this thread dump for deadlocks"
+# Pipe a file as context
+cat ./thread-dump.txt | dx ask "analyze this thread dump for deadlocks"
+
+# Or in interactive mode, use /upload
+dx ask
+dx> /upload ./thread-dump.txt
+dx> analyze this thread dump for deadlocks
 ```
 
 ## File layout

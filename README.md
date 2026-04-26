@@ -48,7 +48,6 @@ DX_API_KEY=dak_xxx DX_ENDPOINT=https://acme.deductive.ai dx ask "status?"
 | `dx auth` | Re-authenticate |
 | `dx profile` | List and manage profiles |
 | `dx profile create` | Create a profile with endpoint and auth |
-| `dx upload` | Upload files or stdin as context |
 | `dx skill install` | Install SKILL.md for AI agent integration |
 | `dx upgrade` | Upgrade to the latest version |
 
