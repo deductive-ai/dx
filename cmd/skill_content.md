@@ -2,6 +2,11 @@
 
 CLI for Deductive AI -- ask questions about your infrastructure from the terminal.
 
+Use when the user asks to investigate, debug, query, or monitor infrastructure --
+health checks, error analysis, log inspection, resource usage, deployment status,
+or any operational question about services, pods, databases, or cloud resources.
+Also use when piping CLI output (kubectl, docker, ps, netstat, etc.) for AI analysis.
+
 ## Install
 
 ```bash
