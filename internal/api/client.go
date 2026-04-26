@@ -287,18 +287,10 @@ type SessionRequest struct {
 	Title   string `json:"title,omitempty"`
 }
 
-// PresignedURL represents a presigned URL for file upload
-type PresignedURL struct {
-	UploadURL string `json:"upload_url"`
-	Key       string `json:"key"`
-	ExpiresAt string `json:"expires_at"`
-}
-
 // SessionResponse represents the response from session creation
 type SessionResponse struct {
-	SessionID     string         `json:"session_id"`
-	URL           string         `json:"url"`
-	PresignedURLs []PresignedURL `json:"presigned_urls"`
+	SessionID string `json:"session_id"`
+	URL       string `json:"url"`
 }
 
 // CreateSession creates a new chat session
@@ -376,6 +368,41 @@ func (c *Client) SendMessage(sessionID string, message string, additionalText st
 	}
 
 	return nil
+}
+
+// UploadURLRequest represents a request for a presigned upload URL
+type UploadURLRequest struct {
+	Filename string `json:"filename"`
+}
+
+// UploadURLResponse represents the response with a presigned upload URL
+type UploadURLResponse struct {
+	UploadURL string `json:"upload_url"`
+	Key       string `json:"key"`
+	ExpiresAt string `json:"expires_at"`
+}
+
+// RequestUploadURL requests a single presigned upload URL for a session
+func (c *Client) RequestUploadURL(sessionID string, filename string) (*UploadURLResponse, error) {
+	req := &UploadURLRequest{Filename: filename}
+
+	resp, err := c.doRequest("POST", "/api/v1/sessions/"+sessionID+"/upload-url", req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to get upload URL: %s", string(body))
+	}
+
+	var result UploadURLResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &result, nil
 }
 
 // AttachFilesRequest represents a request to attach files to a session

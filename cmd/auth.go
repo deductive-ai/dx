@@ -53,20 +53,16 @@ func runAuth(cmd *cobra.Command, args []string) {
 	client := api.NewClientWithEndpoint(cfg.Endpoint)
 
 	switch cfg.AuthMethod {
-	case "oauth":
-		if err := authenticateWithOAuth(client, profile); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
 	case "apikey":
 		fmt.Println("This profile uses API key authentication.")
 		fmt.Println("To update your key:")
 		fmt.Println("  1) Generate a new key in Settings > API Keys")
 		fmt.Printf("  2) Run: %s\n", color.Command("dx ask"))
 	default:
-		fmt.Fprintf(os.Stderr, "%s No auth method configured.\n", color.Error("✗"))
-		fmt.Fprintf(os.Stderr, "Run %s to set up the CLI.\n", color.Command("dx ask"))
-		os.Exit(1)
+		if err := authenticateWithOAuth(client, profile); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
 	}
 }
 

@@ -16,32 +16,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deductive-ai/dx/internal/api"
 	"github.com/deductive-ai/dx/internal/config"
-	"github.com/deductive-ai/dx/internal/crypto"
 )
 
 // State represents the session state stored in ~/.dx/sessions/<session-id>
 type State struct {
-	SessionID     string             `json:"session_id"`
-	Profile       string             `json:"profile"`
-	URL           string             `json:"url"`
-	PresignedURLs []api.PresignedURL `json:"presigned_urls"`
-	CreatedAt     time.Time          `json:"created_at"`
-	LastMessageAt time.Time          `json:"last_message_at"`
-	URLsUsed      int                `json:"urls_used"`
-}
-
-// encryptedState is the on-disk format with encrypted sensitive data
-type encryptedState struct {
-	SessionID     string             `json:"session_id"`
-	Profile       string             `json:"profile"`
-	URL           string             `json:"url"`
-	EncryptedURLs string             `json:"encrypted_urls,omitempty"`
-	PresignedURLs []api.PresignedURL `json:"presigned_urls,omitempty"`
-	CreatedAt     time.Time          `json:"created_at"`
-	LastMessageAt time.Time          `json:"last_message_at"`
-	URLsUsed      int                `json:"urls_used"`
+	SessionID     string    `json:"session_id"`
+	Profile       string    `json:"profile"`
+	URL           string    `json:"url"`
+	CreatedAt     time.Time `json:"created_at"`
+	LastMessageAt time.Time `json:"last_message_at"`
 }
 
 const DefaultSessionTTL = 30 * time.Minute
@@ -65,40 +49,17 @@ func Load(sessionID string) (*State, error) {
 	data, err := os.ReadFile(sessionPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil // No session exists
+			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to read session file: %w", err)
 	}
 
-	var enc encryptedState
-	if err := json.Unmarshal(data, &enc); err != nil {
+	var state State
+	if err := json.Unmarshal(data, &state); err != nil {
 		return nil, fmt.Errorf("failed to parse session file: %w", err)
 	}
 
-	state := &State{
-		SessionID:     enc.SessionID,
-		Profile:       enc.Profile,
-		URL:           enc.URL,
-		CreatedAt:     enc.CreatedAt,
-		LastMessageAt: enc.LastMessageAt,
-		URLsUsed:      enc.URLsUsed,
-	}
-
-	// Decrypt presigned URLs if encrypted
-	if enc.EncryptedURLs != "" {
-		decrypted, err := crypto.Decrypt(enc.EncryptedURLs)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decrypt session data: %w", err)
-		}
-		if err := json.Unmarshal([]byte(decrypted), &state.PresignedURLs); err != nil {
-			return nil, fmt.Errorf("failed to parse decrypted URLs: %w", err)
-		}
-	} else {
-		// Legacy unencrypted format
-		state.PresignedURLs = enc.PresignedURLs
-	}
-
-	return state, nil
+	return &state, nil
 }
 
 // Save writes the session state to ~/.dx/sessions/<session-id>
@@ -112,28 +73,7 @@ func Save(state *State) error {
 		return err
 	}
 
-	// Encrypt presigned URLs
-	urlsJSON, err := json.Marshal(state.PresignedURLs)
-	if err != nil {
-		return fmt.Errorf("failed to marshal URLs: %w", err)
-	}
-
-	encryptedURLs, err := crypto.Encrypt(string(urlsJSON))
-	if err != nil {
-		return fmt.Errorf("failed to encrypt URLs: %w", err)
-	}
-
-	enc := encryptedState{
-		SessionID:     state.SessionID,
-		Profile:       state.Profile,
-		URL:           state.URL,
-		EncryptedURLs: encryptedURLs,
-		CreatedAt:     state.CreatedAt,
-		LastMessageAt: state.LastMessageAt,
-		URLsUsed:      state.URLsUsed,
-	}
-
-	data, err := json.MarshalIndent(enc, "", "  ")
+	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal session: %w", err)
 	}
@@ -213,34 +153,6 @@ func Clear(profile string) error {
 func Exists(profile string) bool {
 	state, err := LoadCurrent(profile)
 	return err == nil && state != nil
-}
-
-// GetNextPresignedURL returns the next available presigned URL
-func (s *State) GetNextPresignedURL() (*api.PresignedURL, error) {
-	if s.URLsUsed >= len(s.PresignedURLs) {
-		return nil, fmt.Errorf("no more presigned URLs available. Create a new session or resume to get more")
-	}
-
-	url := &s.PresignedURLs[s.URLsUsed]
-	s.URLsUsed++
-
-	return url, nil
-}
-
-// GetAvailableURLCount returns the number of available presigned URLs
-func (s *State) GetAvailableURLCount() int {
-	if s.URLsUsed < 0 || s.URLsUsed > len(s.PresignedURLs) {
-		return 0
-	}
-	return len(s.PresignedURLs) - s.URLsUsed
-}
-
-// UpdateFromResponse updates the session state from an API response
-func (s *State) UpdateFromResponse(resp *api.SessionResponse) {
-	s.SessionID = resp.SessionID
-	s.URL = resp.URL
-	s.PresignedURLs = resp.PresignedURLs
-	s.URLsUsed = 0
 }
 
 // ListForProfile returns all stored sessions for a specific profile

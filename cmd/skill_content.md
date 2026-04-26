@@ -85,11 +85,11 @@ Manage named profiles (each with its own endpoint, auth, sessions).
 # List profiles (* marks active)
 dx profile
 
+# Create a profile (defaults to OAuth)
+dx profile create staging --endpoint=https://staging.deductive.ai
+
 # Create a profile with API key auth
 dx profile create staging --endpoint=https://staging.deductive.ai --api-key=dak_xxxxx
-
-# Create a profile with OAuth
-dx profile create staging --endpoint=https://staging.deductive.ai --auth-mode=oauth
 
 # Skip endpoint validation (e.g. local dev)
 dx profile create local --endpoint=http://localhost:8081 --api-key=dak_xxxxx --no-validate
@@ -103,9 +103,7 @@ dx profile delete --profile=staging
 
 **`dx profile create` flags:**
 - `--endpoint`, `-e` -- Deductive endpoint URL (required)
-- `--api-key` -- API key (implies apikey auth mode)
-- `--auth-mode` -- `oauth` or `apikey`
-- `--editor` -- preferred text editor
+- `--api-key` -- API key (uses apikey auth; omit for OAuth)
 - `--no-validate` -- skip endpoint connectivity check
 
 **Profile precedence:** `--profile` flag > `DX_PROFILE` env var > `~/.dx/active_profile` file > `"default"`

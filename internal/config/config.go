@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -55,7 +54,6 @@ type Config struct {
 	APIKey            string    `toml:"api_key,omitempty"`
 	EncryptedAPIKey   string    `toml:"encrypted_api_key,omitempty"`
 	TeamID            string    `toml:"team_id,omitempty"`
-	Editor            string    `toml:"editor,omitempty"`
 }
 
 // Auth represents authentication configuration
@@ -371,22 +369,6 @@ func ListProfiles() ([]string, error) {
 	return profiles, nil
 }
 
-// GetEditor returns the configured editor or falls back to environment/defaults
-func (c *Config) GetEditor() string {
-	if c.Editor != "" {
-		return c.Editor
-	}
-	if editor := os.Getenv("EDITOR"); editor != "" {
-		return editor
-	}
-	if visual := os.Getenv("VISUAL"); visual != "" {
-		return visual
-	}
-	if runtime.GOOS == "windows" {
-		return "notepad"
-	}
-	return "vim"
-}
 
 // Deprecated compatibility functions - these are kept for backward compatibility
 // but delegate to the new profile-based system using the default profile

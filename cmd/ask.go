@@ -21,7 +21,7 @@ import (
 	"github.com/deductive-ai/dx/internal/session"
 	"github.com/deductive-ai/dx/internal/stream"
 	"github.com/deductive-ai/dx/internal/telemetry"
-	"github.com/deductive-ai/dx/internal/upload"
+
 	"github.com/peterh/liner"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel/attribute"
@@ -116,11 +116,10 @@ func ensureSession(client *api.Client, profile string, preState *session.State, 
 		os.Exit(1)
 	}
 	state = &session.State{
-		SessionID:     resp.SessionID,
-		Profile:       profile,
-		URL:           resp.URL,
-		PresignedURLs: resp.PresignedURLs,
-		CreatedAt:     time.Now(),
+		SessionID: resp.SessionID,
+		Profile:   profile,
+		URL:       resp.URL,
+		CreatedAt: time.Now(),
 	}
 	_ = session.Save(state)
 	_ = session.SetCurrentSessionID(state.SessionID, profile)
@@ -173,11 +172,10 @@ func runAsk(cmd *cobra.Command, args []string) {
 		}
 
 		explicitState = &session.State{
-			SessionID:     resp.SessionID,
-			Profile:       profile,
-			URL:           resp.URL,
-			PresignedURLs: resp.PresignedURLs,
-			CreatedAt:     createdAt,
+			SessionID: resp.SessionID,
+			Profile:   profile,
+			URL:       resp.URL,
+			CreatedAt: createdAt,
 		}
 		_ = session.Save(explicitState)
 		// Update the per-profile current_session pointer for the convenience
@@ -188,91 +186,30 @@ func runAsk(cmd *cobra.Command, args []string) {
 	}
 
 	// Check for piped input
-	var pipedData []byte
+	var pipedQuestion string
 	stat, _ := os.Stdin.Stat()
 	if (stat.Mode()&os.ModeCharDevice) == 0 && (stat.Mode()&os.ModeNamedPipe) != 0 {
 		data, err := io.ReadAll(os.Stdin)
 		if err == nil && len(data) > 0 {
-			pipedData = data
+			pipedQuestion = strings.TrimSpace(string(data))
 		}
 	}
 
-	// If data was piped, upload it as a file to the session before asking
-	if len(pipedData) > 0 {
-		explicitState = uploadPipedData(cfg, profile, pipedData, explicitState)
-
-		// Reopen the controlling terminal so interactive mode can read input.
-		// When stdin is a pipe, it's been consumed; /dev/tty gives us the real terminal.
-		tty, err := os.Open("/dev/tty")
-		if err == nil {
-			os.Stdin = tty
-			defer tty.Close()
+	// Build question from CLI args and/or piped input
+	question := strings.Join(args, " ")
+	if pipedQuestion != "" {
+		if question != "" {
+			question = question + "\n\n" + pipedQuestion
+		} else {
+			question = pipedQuestion
 		}
 	}
 
-	// Determine mode: interactive or non-interactive
-	if len(args) > 0 {
-		question := strings.Join(args, " ")
+	if question != "" {
 		runNonInteractiveAsk(cfg, profile, question, explicitState)
 	} else {
 		runInteractiveAsk(cfg, profile, explicitState)
 	}
-}
-
-// uploadPipedData uploads piped stdin data as a file to the current session.
-// It ensures a session exists (creating one if needed), uploads the data to S3,
-// attaches it, and sends a notification so inference knows about the file.
-//
-// If preState is non-nil it is used directly (no read of the per-profile
-// current_session pointer file); this is required for safe parallel
-// `dx ask -s SID ...` invocations. Returns the (possibly updated) state so
-// callers can keep threading it through.
-func uploadPipedData(cfg *config.Config, profile string, data []byte, preState *session.State) *session.State {
-	logging.Debug("Uploading piped data", "size", len(data), "profile", profile)
-	client := api.NewClient(cfg)
-
-	state, _ := ensureSession(client, profile, preState, os.Stderr)
-
-	availableURLs := state.GetAvailableURLCount()
-	if availableURLs <= 0 {
-		fmt.Fprintln(os.Stderr, color.Warning("Warning: No upload slots available, piped data will not be uploaded."))
-		return state
-	}
-
-	startIdx := state.URLsUsed
-	if startIdx > len(state.PresignedURLs) {
-		startIdx = len(state.PresignedURLs)
-	}
-	uploader := upload.NewS3Uploader(state.PresignedURLs[startIdx:])
-	if err := uploader.UploadBytes(data, "stdin.txt"); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: Could not upload piped data: %v\n", err)
-		return state
-	}
-
-	// Attach and notify
-	uploadedKeys := uploader.UploadedKeys()
-	resp, err := client.AttachFiles(state.SessionID, uploadedKeys)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: Could not attach piped data to session: %v\n", err)
-	} else if resp.Success {
-		fmt.Fprintf(statusWriter(), "✓ Uploaded piped input as %s (%s)\n",
-			color.Info("stdin.txt"),
-			color.Muted(formatByteSize(len(data))))
-
-		fileList := uploader.FormatFileNamesForNotification()
-		notifyMsg := fmt.Sprintf(
-			"[System] 1 file uploaded to this session (piped from stdin):\n\n%s\n"+
-				"This file is now available in the workspace for analysis when needed.",
-			fileList,
-		)
-		if err := client.SendMessage(state.SessionID, notifyMsg, "", ""); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: Could not notify about uploaded file: %v\n", err)
-		}
-	}
-
-	state.URLsUsed++
-	_ = session.Save(state)
-	return state
 }
 
 // formatByteSize formats a byte count for display.
@@ -302,7 +239,7 @@ func runNonInteractiveAsk(cfg *config.Config, profile string, question string, p
 
 	state, isNew := ensureSession(client, profile, preState, sw)
 	if isNew {
-		fmt.Fprintf(sw, "Session: %s\n", state.SessionID)
+		fmt.Fprintf(sw, "Profile: %s | Session: %s\n", profile, state.SessionID)
 		fmt.Fprintln(sw)
 	}
 
@@ -376,7 +313,7 @@ func runInteractiveAsk(cfg *config.Config, profile string, preState *session.Sta
 
 	state, _ := ensureSession(client, profile, preState, os.Stdout)
 
-	fmt.Printf("Session: %s\n", color.SessionID(state.SessionID))
+	fmt.Printf("Profile: %s | Session: %s\n", color.Info(profile), color.SessionID(state.SessionID))
 	fmt.Printf("%s\n", color.Muted("Type your questions. Use /help for commands. Press Ctrl+D to exit."))
 	fmt.Println()
 
@@ -384,8 +321,9 @@ func runInteractiveAsk(cfg *config.Config, profile string, preState *session.Sta
 	line := liner.NewLiner()
 	defer line.Close()
 
-	// Set up multiline mode and ctrl+c handling
 	line.SetCtrlCAborts(true)
+	line.SetWordCompleter(uploadPathCompleter)
+	line.SetTabCompletionStyle(liner.TabPrints)
 
 	// Load history
 	historyPath := getHistoryFilePath()
@@ -854,6 +792,48 @@ func formatToolOutput(to *ToolOutput, state *OutputState) {
 	state.inToolBlock = false
 }
 
+func uploadPathCompleter(line string, pos int) (string, []string, string) {
+	cmdPrefix := "/upload "
+	if !strings.HasPrefix(line[:pos], cmdPrefix) {
+		return line[:pos], nil, line[pos:]
+	}
+
+	partial := line[len(cmdPrefix):pos]
+
+	var dir, namePrefix string
+	if idx := strings.LastIndex(partial, "/"); idx >= 0 {
+		dir = partial[:idx+1]
+		namePrefix = partial[idx+1:]
+	} else {
+		dir = ""
+		namePrefix = partial
+	}
+
+	readDir := dir
+	if readDir == "" {
+		readDir = "."
+	}
+
+	entries, err := os.ReadDir(readDir)
+	if err != nil {
+		return line[:pos], nil, line[pos:]
+	}
+
+	var candidates []string
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Name(), namePrefix) {
+			continue
+		}
+		name := dir + e.Name()
+		if e.IsDir() {
+			name += "/"
+		}
+		candidates = append(candidates, name)
+	}
+
+	return cmdPrefix, candidates, line[pos:]
+}
+
 func handleSlashCommand(input string, cfg *config.Config, state *session.State) {
 	parts := strings.Fields(input)
 	cmd := parts[0]
@@ -872,7 +852,6 @@ func handleSlashCommand(input string, cfg *config.Config, state *session.State) 
 			return
 		}
 		fmt.Println(color.Success("✓"))
-		fmt.Printf("  Upload slots remaining: %d\n", state.GetAvailableURLCount())
 
 	case "/help":
 		fmt.Println()

@@ -31,11 +31,9 @@ type StatusOutput struct {
 
 // SessionStatus is the session sub-object inside StatusOutput.
 type SessionStatus struct {
-	ID               string    `json:"id"`
-	URL              string    `json:"url"`
-	CreatedAt        time.Time `json:"created_at"`
-	UploadsAvailable int       `json:"uploads_available"`
-	UploadsTotal     int       `json:"uploads_total"`
+	ID        string    `json:"id"`
+	URL       string    `json:"url"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 var statusJSONFlag bool
@@ -189,16 +187,10 @@ func runStatusJSON(profile string) {
 
 	state, _ := session.LoadCurrent(profile)
 	if state != nil {
-		available := len(state.PresignedURLs) - state.URLsUsed
-		if available < 0 {
-			available = 0
-		}
 		out.Session = &SessionStatus{
-			ID:               state.SessionID,
-			URL:              state.URL,
-			CreatedAt:        state.CreatedAt,
-			UploadsAvailable: available,
-			UploadsTotal:     len(state.PresignedURLs),
+			ID:        state.SessionID,
+			URL:       state.URL,
+			CreatedAt: state.CreatedAt,
 		}
 		out.URL = state.URL
 	}

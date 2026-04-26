@@ -72,7 +72,6 @@ func TestSaveLoad_RoundTrip(t *testing.T) {
 		AuthMethod: "apikey",
 		APIKey:     "sk-test-key-12345",
 		TeamID:     "team_abc",
-		Editor:     "nano",
 	}
 
 	if err := Save(original, "default"); err != nil {
@@ -95,9 +94,6 @@ func TestSaveLoad_RoundTrip(t *testing.T) {
 	}
 	if loaded.TeamID != original.TeamID {
 		t.Errorf("TeamID = %q, want %q", loaded.TeamID, original.TeamID)
-	}
-	if loaded.Editor != original.Editor {
-		t.Errorf("Editor = %q, want %q", loaded.Editor, original.Editor)
 	}
 }
 
@@ -308,34 +304,6 @@ func TestDeleteProfile_NonExistent(t *testing.T) {
 	err := DeleteProfile("ghost")
 	if err == nil {
 		t.Error("DeleteProfile() should return error for non-existent profile")
-	}
-}
-
-func TestGetEditor_Fallback(t *testing.T) {
-	tests := []struct {
-		name       string
-		cfgEditor  string
-		envEditor  string
-		envVisual  string
-		wantEditor string
-	}{
-		{"config editor wins", "code", "nano", "emacs", "code"},
-		{"EDITOR fallback", "", "nano", "emacs", "nano"},
-		{"VISUAL fallback", "", "", "emacs", "emacs"},
-		{"default vim", "", "", "", "vim"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("EDITOR", tt.envEditor)
-			t.Setenv("VISUAL", tt.envVisual)
-
-			cfg := &Config{Editor: tt.cfgEditor}
-			got := cfg.GetEditor()
-			if got != tt.wantEditor {
-				t.Errorf("GetEditor() = %q, want %q", got, tt.wantEditor)
-			}
-		})
 	}
 }
 
@@ -550,7 +518,6 @@ func TestSaveAuth_PreservesExistingFields(t *testing.T) {
 	// Save initial config with extra fields
 	initial := &Config{
 		Endpoint: "https://example.com",
-		Editor:   "code",
 	}
 	_ = Save(initial, "default")
 
@@ -565,9 +532,6 @@ func TestSaveAuth_PreservesExistingFields(t *testing.T) {
 	loaded, _ := Load("default")
 	if loaded.Endpoint != "https://example.com" {
 		t.Errorf("Endpoint should be preserved, got %q", loaded.Endpoint)
-	}
-	if loaded.Editor != "code" {
-		t.Errorf("Editor should be preserved, got %q", loaded.Editor)
 	}
 }
 
