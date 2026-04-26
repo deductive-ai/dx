@@ -1,0 +1,51 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: .
+    binary: dx
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/deductive-ai/dx/cmd.Version={{.Version}}
+      - -X github.com/deductive-ai/dx/cmd.GitCommit={{.ShortCommit}}
+      - -X github.com/deductive-ai/dx/cmd.BuildDate={{.Date}}
+
+archives:
+  - format: tar.gz
+    name_template: >-
+      dx_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+
+brews:
+  - repository:
+      owner: deductive-ai
+      name: homebrew-dx
+    homepage: https://deductive.ai
+    description: CLI for Deductive AI — ask questions about your infrastructure
+    license: Apache-2.0
+    install: |
+      bin.install "dx"
+    test: |
+      system "#{bin}/dx", "version"
