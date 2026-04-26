@@ -38,18 +38,15 @@ changelog:
       - "^ci:"
       - "^chore:"
 
-# Homebrew tap — uncomment once HOMEBREW_TAP_GITHUB_TOKEN secret is configured
-# in GitHub Actions. The token needs write access to deductive-ai/homebrew-dx.
-#
-# brews:
-#   - repository:
-#       owner: deductive-ai
-#       name: homebrew-dx
-#       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-#     homepage: https://deductive.ai
-#     description: CLI for Deductive AI — ask questions about your infrastructure
-#     license: Apache-2.0
-#     install: |
-#       bin.install "dx"
-#     test: |
-#       system "#{bin}/dx", "version"
+brews:
+  - repository:
+      owner: deductive-ai
+      name: homebrew-dx
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: https://deductive.ai
+    description: CLI for Deductive AI — ask questions about your infrastructure
+    license: Apache-2.0
+    install: |
+      bin.install "dx"
+    test: |
+      system "#{bin}/dx", "version"
