@@ -67,7 +67,6 @@ dx ask --timeout 60 "long analysis"
 
 | Command | Description |
 |---------|-------------|
-| `/upload <path>` | Attach a text file to the current session |
 | `/new` | Start a fresh session |
 | `/resume` | List recent sessions and switch to one |
 | `/help` | Show available commands |
@@ -147,16 +146,10 @@ kubectl logs deploy/api --tail=100 | dx ask "summarize errors"
 docker stats --no-stream | dx ask "which containers need attention?"
 ```
 
-### Attach a file and ask
+### Pipe a file as context
 
 ```bash
-# Pipe a file as context
 cat ./thread-dump.txt | dx ask "analyze this thread dump for deadlocks"
-
-# Or in interactive mode, use /upload
-dx ask
-dx> /upload ./thread-dump.txt
-dx> analyze this thread dump for deadlocks
 ```
 
 ## File layout

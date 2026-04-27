@@ -51,11 +51,6 @@ Type your questions. Use /help for commands. Press Ctrl+D to exit.
 dx> what pods are failing in production?
 Based on the current cluster state, I found 3 pods in CrashLoopBackOff...
 
-dx> /upload ./thread-dump.txt
-Uploading thread-dump.txt... ✓
-
-dx> analyze this thread dump for deadlocks
-
 dx> /new
 Creating session...
 Endpoint: https://app.deductive.ai | Session: e5f6g7h8

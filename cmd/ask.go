@@ -45,12 +45,11 @@ Non-interactive mode (question as argument):
 
 Piped input:
   ps aux | dx ask "summarize these processes"
-  # The piped data is uploaded as a file (stdin.txt) to the session,
-  # then the question is sent. The agent can read the file for analysis.
+  # The piped data is included as context with the question.
 
   lsof -i | dx ask
-  # Piped data is uploaded and interactive mode starts, so you can
-  # ask multiple follow-up questions about the data.
+  # Piped data is included as context and interactive mode starts,
+  # so you can ask multiple follow-up questions about the data.
 
 Piped output:
   When stdout is piped (e.g. to jq), status messages are automatically
@@ -811,7 +810,7 @@ func formatToolOutput(to *ToolOutput, state *OutputState) {
 func slashCompleter(line string, pos int) (string, []string, string) {
 	if line[:pos] == "/" || (strings.HasPrefix(line[:pos], "/") && !strings.Contains(line[:pos], " ")) {
 		partial := line[:pos]
-		commands := []string{"/upload ", "/new", "/resume", "/help"}
+		commands := []string{"/new", "/resume", "/help"}
 		var matches []string
 		for _, c := range commands {
 			if strings.HasPrefix(c, partial) {
@@ -868,18 +867,8 @@ func handleSlashCommand(input string, cfg *config.Config, state *session.State, 
 
 	switch cmd {
 	case "/upload":
-		if len(parts) < 2 {
-			fmt.Println(color.Error("Usage: /upload <file-path>"))
-			return nil
-		}
-		path := parts[1]
-		fmt.Printf("Uploading %s... ", filepath.Base(path))
-		if err := uploadFileToSession(cfg, state, path); err != nil {
-			fmt.Println(color.Error("✗"))
-			fmt.Fprintf(os.Stderr, "  %v\n", err)
-			return nil
-		}
-		fmt.Println(color.Success("✓"))
+		fmt.Println(color.Muted("File upload is not yet available. Use piped input instead:"))
+		fmt.Println(color.Muted("  cat <file> | dx ask \"analyze this\""))
 
 	case "/new":
 		fmt.Println("Creating session...")
@@ -906,7 +895,6 @@ func handleSlashCommand(input string, cfg *config.Config, state *session.State, 
 		fmt.Println()
 		fmt.Println("  Available commands:")
 		helpItems := []struct{ cmd, desc string }{
-			{"/upload <path>", "Attach a text file to the session"},
 			{"/new", "Start a fresh session"},
 			{"/resume", "Switch to a previous session"},
 			{"/help", "Show this help"},
