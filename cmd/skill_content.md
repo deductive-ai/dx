@@ -119,10 +119,13 @@ dx skill install --force
 dx skill print
 ```
 
-`dx skill install` auto-detects the agent environment:
-- If `.claude/` exists in cwd: writes to `~/.claude/skills/dx/SKILL.md`
-- If `.cursor/` exists in cwd: writes to `.cursor/skills/dx/SKILL.md`
-- Default: writes to `.cursor/skills/dx/SKILL.md`
+`dx skill install` writes to all user-level agent skill directories:
+- `~/.claude/skills/dx/SKILL.md` (Claude Code)
+- `~/.cursor/skills/dx/SKILL.md` (Cursor)
+- `~/.copilot/skills/dx/SKILL.md` (GitHub Copilot)
+- `~/.agents/skills/dx/SKILL.md` (OpenAI Codex)
+
+One install covers every agent in every project.
 
 ## Global flags
 

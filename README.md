@@ -72,7 +72,7 @@ dx> what's the p99 latency on the payments service?
 | `dx auth` | Re-authenticate |
 | `dx config` | View or change settings |
 | `dx upgrade` | Upgrade to the latest version |
-| `dx skill install` | Install SKILL.md for AI agent integration |
+| `dx skill install` | Install skill for all agents (Cursor, Claude Code, Copilot, Codex) |
 
 Run `dx --help` for full details.
 
