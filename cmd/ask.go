@@ -339,8 +339,8 @@ func runNonInteractiveAsk(cfg *config.Config, profile string, question string, p
 
 	// Show view URL — goes to stderr when stdout is captured so it doesn't
 	// pollute the captured answer.
-	fmt.Fprintln(sw)
-	fmt.Fprintf(sw, "View: %s\n", color.URL(state.URL))
+	_, _ = fmt.Fprintln(sw)
+	_, _ = fmt.Fprintf(sw, "View: %s\n", color.URL(state.URL))
 }
 
 // getHistoryFilePath returns the path to the command history file

@@ -178,7 +178,7 @@ func installCompletion(cmd *cobra.Command, shell string) error {
 		if err != nil {
 			return fmt.Errorf("could not create %s: %w", targetFile, err)
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		
 		if err := cmd.Root().GenFishCompletion(f, true); err != nil {
 			return fmt.Errorf("could not generate fish completions: %w", err)

@@ -139,7 +139,7 @@ func (c *Client) Verify(token string) (*VerifyResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		body, _ := io.ReadAll(resp.Body)
@@ -181,7 +181,7 @@ func (c *Client) RequestDeviceCode() (*DeviceCodeResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -229,10 +229,10 @@ func (c *Client) PollForToken(deviceCode string, interval int) (*TokenResponse, 
 
 			var result TokenResponse
 			if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-				resp.Body.Close()
+				_ = resp.Body.Close()
 				continue
 			}
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			if result.Error == "authorization_pending" {
 				continue
@@ -261,7 +261,7 @@ func (c *Client) RefreshAccessToken(refreshToken string) (*TokenResponse, error)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		return nil, fmt.Errorf("refresh token expired or invalid")
@@ -299,7 +299,7 @@ func (c *Client) CreateSession(req *SessionRequest) (*SessionResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
@@ -320,7 +320,7 @@ func (c *Client) GetSession(sessionID string) (*SessionResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, fmt.Errorf("session not found")
@@ -360,7 +360,7 @@ func (c *Client) SendMessage(sessionID string, message string, additionalText st
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
 		body, _ := io.ReadAll(resp.Body)
@@ -390,7 +390,7 @@ func (c *Client) RequestUploadURL(sessionID string, filename string) (*UploadURL
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -426,7 +426,7 @@ func (c *Client) AttachFiles(sessionID string, s3Keys []string) (*AttachFilesRes
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

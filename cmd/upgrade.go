@@ -119,7 +119,7 @@ func fetchLatestVersion() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to check for updates: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 200 {
 		return "", fmt.Errorf("GitHub API returned %d", resp.StatusCode)
@@ -142,7 +142,7 @@ func downloadAndExtract(url, destBinary string) error {
 	if err != nil {
 		return fmt.Errorf("download failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("download returned %d (check that %s/%s is a supported platform)", resp.StatusCode, runtime.GOOS, runtime.GOARCH)
