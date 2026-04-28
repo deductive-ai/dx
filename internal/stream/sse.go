@@ -12,6 +12,26 @@ import (
 	"strings"
 )
 
+// SessionUnavailableError is returned when the server indicates a session
+// cannot be reached (404, 403, 410). Callers can use errors.As to detect
+// this and trigger automatic session recovery.
+type SessionUnavailableError struct {
+	StatusCode int
+}
+
+func (e *SessionUnavailableError) Error() string {
+	switch e.StatusCode {
+	case 404:
+		return "session not found"
+	case 403:
+		return "session not accessible (team mismatch or permission denied)"
+	case 410:
+		return "session has expired"
+	default:
+		return fmt.Sprintf("server returned status %d", e.StatusCode)
+	}
+}
+
 // Event types sent by the SSE stream
 const (
 	EventConnected      = "connected"
@@ -83,7 +103,11 @@ func (c *SSEClient) Stream() (<-chan Event, <-chan error, func()) {
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			errors <- fmt.Errorf("server returned status %d", resp.StatusCode)
+			if resp.StatusCode == 404 || resp.StatusCode == 403 || resp.StatusCode == 410 {
+				errors <- &SessionUnavailableError{StatusCode: resp.StatusCode}
+			} else {
+				errors <- fmt.Errorf("server returned status %d", resp.StatusCode)
+			}
 			return
 		}
 

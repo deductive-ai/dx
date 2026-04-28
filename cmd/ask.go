@@ -6,6 +6,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -128,6 +129,29 @@ func ensureSession(client *api.Client, profile string, preState *session.State, 
 	return state, true
 }
 
+// recoverSession creates a fresh session after detecting that the current one
+// is unavailable (404/403/410). Returns the new state, or nil on failure.
+func recoverSession(client *api.Client, profile string, sw io.Writer) *session.State {
+	_ = session.Clear(profile)
+	fmt.Fprintln(sw, "Session expired, starting fresh...")
+	fmt.Fprintln(sw, "Creating session...")
+	resp, err := client.CreateSession(&api.SessionRequest{Mode: "ask"})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating session: %v\n", err)
+		return nil
+	}
+	state := &session.State{
+		SessionID: resp.SessionID,
+		Profile:   profile,
+		URL:       resp.URL,
+		CreatedAt: time.Now(),
+	}
+	_ = session.Save(state)
+	_ = session.SetCurrentSessionID(state.SessionID, profile)
+	logging.Debug("Session recovered", "id", resp.SessionID, "profile", profile)
+	return state
+}
+
 func runAsk(cmd *cobra.Command, args []string) {
 	profile := GetProfile()
 
@@ -244,31 +268,51 @@ func runNonInteractiveAsk(cfg *config.Config, profile string, question string, p
 		fmt.Fprintln(sw)
 	}
 
-	// Start streaming BEFORE sending message to avoid race condition
-	events, errors, cancel := stream.StreamResponse(cfg.Endpoint, state.SessionID, cfg.GetAuthToken())
-
-	// Wait for connection to be established (with 30s timeout)
+	// Start streaming BEFORE sending message to avoid race condition.
+	// If the session is unavailable (404/403/410), auto-recover once.
+	var events <-chan stream.Event
+	var streamErrors <-chan error
+	var cancel func()
 	connected := false
-	connectTimeout := time.After(30 * time.Second)
+	recoveryAttempted := false
+
 	for !connected {
-		select {
-		case event, ok := <-events:
-			if !ok {
-				fmt.Fprintln(os.Stderr, color.Error("✗ Connection closed unexpectedly"))
+		events, streamErrors, cancel = stream.StreamResponse(cfg.Endpoint, state.SessionID, cfg.GetAuthToken())
+		connectTimeout := time.After(30 * time.Second)
+
+	nonInteractiveConnect:
+		for {
+			select {
+			case event, ok := <-events:
+				if !ok {
+					fmt.Fprintln(os.Stderr, color.Error("✗ Connection closed unexpectedly"))
+					cancel()
+					os.Exit(1)
+				}
+				if event.Type == "connected" {
+					connected = true
+					break nonInteractiveConnect
+				}
+			case err := <-streamErrors:
+				cancel()
+				var sessionErr *stream.SessionUnavailableError
+				if errors.As(err, &sessionErr) && !recoveryAttempted {
+					recoveryAttempted = true
+					newState := recoverSession(client, profile, sw)
+					if newState != nil {
+						state = newState
+						fmt.Fprintf(sw, "Endpoint: %s | Session: %s\n", cfg.Endpoint, state.SessionID)
+						fmt.Fprintln(sw)
+						break nonInteractiveConnect
+					}
+				}
+				fmt.Fprintln(os.Stderr, color.Error(fmt.Sprintf("✗ Connection error: %v", err)))
+				os.Exit(1)
+			case <-connectTimeout:
+				fmt.Fprintln(os.Stderr, color.Error("✗ Connection timed out after 30s"))
 				cancel()
 				os.Exit(1)
 			}
-			if event.Type == "connected" {
-				connected = true
-			}
-		case err := <-errors:
-			fmt.Fprintln(os.Stderr, color.Error(fmt.Sprintf("✗ Connection error: %v", err)))
-			cancel()
-			os.Exit(1)
-		case <-connectTimeout:
-			fmt.Fprintln(os.Stderr, color.Error("✗ Connection timed out after 30s"))
-			cancel()
-			os.Exit(1)
 		}
 	}
 
@@ -283,7 +327,7 @@ func runNonInteractiveAsk(cfg *config.Config, profile string, question string, p
 	if isTTYOutput() {
 		fmt.Println()
 	}
-	streamResponseWithTimeout(events, errors, cancel, askTimeoutFlag)
+	streamResponseWithTimeout(events, streamErrors, cancel, askTimeoutFlag)
 
 	state.LastMessageAt = time.Now()
 	truncated := truncateQuestion(question, 80)
@@ -388,32 +432,51 @@ func runInteractiveAsk(cfg *config.Config, profile string, preState *session.Sta
 			continue
 		}
 
-		// Start streaming BEFORE sending message to avoid race condition
-		events, errors, cancel := stream.StreamResponse(cfg.Endpoint, state.SessionID, cfg.GetAuthToken())
-
-		// Wait for connection to be established (with 30s timeout)
+		// Start streaming BEFORE sending message to avoid race condition.
+		// If the session is unavailable (404/403/410), auto-recover once.
+		var events <-chan stream.Event
+		var streamErrors <-chan error
+		var cancel func()
 		connected := false
-		connectTimeout := time.After(30 * time.Second)
-	connectLoop:
+		recoveryAttempted := false
+
+	connectAttempt:
 		for !connected {
-			select {
-			case event, ok := <-events:
-				if !ok {
-					fmt.Fprintln(os.Stderr, color.Error("✗ Connection lost"))
+			events, streamErrors, cancel = stream.StreamResponse(cfg.Endpoint, state.SessionID, cfg.GetAuthToken())
+			connectTimeout := time.After(30 * time.Second)
+
+		connectLoop:
+			for {
+				select {
+				case event, ok := <-events:
+					if !ok {
+						fmt.Fprintln(os.Stderr, color.Error("✗ Connection lost"))
+						cancel()
+						break connectAttempt
+					}
+					if event.Type == "connected" {
+						connected = true
+						break connectLoop
+					}
+				case err := <-streamErrors:
 					cancel()
-					break connectLoop
+					var sessionErr *stream.SessionUnavailableError
+					if errors.As(err, &sessionErr) && !recoveryAttempted {
+						recoveryAttempted = true
+						newState := recoverSession(client, profile, os.Stdout)
+						if newState != nil {
+							state = newState
+							fmt.Printf("Endpoint: %s | Session: %s\n", color.Info(cfg.Endpoint), color.SessionID(state.SessionID))
+							continue connectAttempt
+						}
+					}
+					fmt.Fprintln(os.Stderr, color.Error(fmt.Sprintf("✗ Error: %v", err)))
+					break connectAttempt
+				case <-connectTimeout:
+					fmt.Fprintln(os.Stderr, color.Error("✗ Connection timed out"))
+					cancel()
+					break connectAttempt
 				}
-				if event.Type == "connected" {
-					connected = true
-				}
-			case err := <-errors:
-				fmt.Fprintln(os.Stderr, color.Error(fmt.Sprintf("✗ Error: %v", err)))
-				cancel()
-				break connectLoop
-			case <-connectTimeout:
-				fmt.Fprintln(os.Stderr, color.Error("✗ Connection timed out"))
-				cancel()
-				break connectLoop
 			}
 		}
 		if !connected {
@@ -429,7 +492,7 @@ func runInteractiveAsk(cfg *config.Config, profile string, preState *session.Sta
 
 		// Continue reading stream for response
 		fmt.Println()
-		streamResponseWithTimeout(events, errors, cancel, askTimeoutFlag)
+		streamResponseWithTimeout(events, streamErrors, cancel, askTimeoutFlag)
 		fmt.Println()
 
 		state.LastMessageAt = time.Now()
