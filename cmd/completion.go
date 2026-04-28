@@ -161,7 +161,7 @@ func installCompletion(cmd *cobra.Command, shell string) error {
 		if err != nil {
 			return fmt.Errorf("could not open %s: %w", targetFile, err)
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		
 		// Add a newline and comment before the completion line
 		installContent := fmt.Sprintf("\n# DX completions\n%s\n", completionLine)

@@ -147,7 +147,7 @@ func fetchFromAPI(profile string) (*versionResponse, error) {
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		return nil, fmt.Errorf("unauthorized (token may be expired)")
@@ -204,9 +204,8 @@ func writeCache(path string, cache *versionCache) error {
 	}
 	tmpPath := tmp.Name()
 	defer func() {
-		tmp.Close()
-		// Clean up the temp file if rename failed.
-		os.Remove(tmpPath)
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
 	}()
 	if _, err := tmp.Write(data); err != nil {
 		return fmt.Errorf("writing temp cache file: %w", err)

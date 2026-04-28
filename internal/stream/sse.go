@@ -100,7 +100,7 @@ func (c *SSEClient) Stream() (<-chan Event, <-chan error, func()) {
 			errors <- fmt.Errorf("failed to connect: %w", err)
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			if resp.StatusCode == 404 || resp.StatusCode == 403 || resp.StatusCode == 410 {

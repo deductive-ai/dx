@@ -74,7 +74,7 @@ func runUpgrade(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(os.Stderr, "  Error creating temp dir: %v\n", err)
 		os.Exit(1)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	newBinary := filepath.Join(tmpDir, "dx")
 	if err := downloadAndExtract(downloadURL, newBinary); err != nil {
@@ -152,7 +152,7 @@ func downloadAndExtract(url, destBinary string) error {
 	if err != nil {
 		return fmt.Errorf("failed to decompress: %w", err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 
 	tr := tar.NewReader(gz)
 	for {
@@ -170,10 +170,10 @@ func downloadAndExtract(url, destBinary string) error {
 				return fmt.Errorf("failed to create binary: %w", err)
 			}
 			if _, err := io.Copy(out, tr); err != nil {
-				out.Close()
+				_ = out.Close()
 				return fmt.Errorf("failed to write binary: %w", err)
 			}
-			out.Close()
+			_ = out.Close()
 			return nil
 		}
 	}
@@ -192,14 +192,13 @@ func replaceBinary(newPath, currentPath string) error {
 	if err != nil {
 		return err
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 
 	dst, err := os.OpenFile(currentPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
 	if err != nil {
-		// Permission denied -- try sudo
 		return trySudoMove(newPath, currentPath)
 	}
-	defer dst.Close()
+	defer func() { _ = dst.Close() }()
 
 	if _, err := io.Copy(dst, src); err != nil {
 		return err

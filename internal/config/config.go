@@ -290,12 +290,13 @@ func SaveAuth(auth *Auth, profile string) error {
 	cfg.AuthMethod = auth.Method
 	cfg.TeamID = auth.TeamID
 
-	if auth.Method == "oauth" {
+	switch auth.Method {
+	case "oauth":
 		cfg.OAuthAccessToken = auth.AccessToken
 		cfg.OAuthRefreshToken = auth.RefreshToken
 		cfg.OAuthExpiresAt = auth.ExpiresAt
 		cfg.APIKey = ""
-	} else if auth.Method == "apikey" {
+	case "apikey":
 		cfg.APIKey = auth.APIKey
 		cfg.OAuthAccessToken = ""
 		cfg.OAuthRefreshToken = ""
