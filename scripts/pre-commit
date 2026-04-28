@@ -1,0 +1,17 @@
+#!/bin/sh
+set -e
+
+echo "Running pre-commit checks..."
+
+echo "  go vet ./..."
+go vet ./...
+
+echo "  go build ./..."
+go build ./...
+
+if command -v golangci-lint >/dev/null 2>&1; then
+  echo "  golangci-lint run"
+  golangci-lint run
+fi
+
+echo "Pre-commit checks passed."

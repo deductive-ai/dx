@@ -1,6 +1,6 @@
 PREFIX ?= /usr/local
 
-.PHONY: build test lint clean install uninstall
+.PHONY: build test lint clean install uninstall setup
 
 build:
 	go build -o dx .
@@ -20,3 +20,7 @@ install: build
 
 uninstall:
 	rm -f $(PREFIX)/bin/dx
+
+setup:
+	ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
+	@echo "Pre-commit hook installed."
