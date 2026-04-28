@@ -133,7 +133,12 @@ func ensureSession(client *api.Client, profile string, preState *session.State, 
 // is unavailable (404/403/410). Returns the new state, or nil on failure.
 func recoverSession(client *api.Client, profile string, sw io.Writer) *session.State {
 	_ = session.Clear(profile)
-	_, _ = fmt.Fprintln(sw, "Session expired, starting fresh...")
+	cfg, _ := config.Load(profile)
+	if cfg != nil && cfg.TeamName != "" {
+		_, _ = fmt.Fprintf(sw, "Session expired for %s, starting fresh...\n", cfg.TeamName)
+	} else {
+		_, _ = fmt.Fprintln(sw, "Session expired, starting fresh...")
+	}
 	_, _ = fmt.Fprintln(sw, "Creating session...")
 	resp, err := client.CreateSession(&api.SessionRequest{Mode: "ask"})
 	if err != nil {

@@ -78,9 +78,10 @@ func authenticateWithAPIKey(client *api.Client, profile string, apiKey string) e
 	}
 
 	auth := &config.Auth{
-		Method: "apikey",
-		APIKey: apiKey,
-		TeamID: resp.TeamID,
+		Method:   "apikey",
+		APIKey:   apiKey,
+		TeamID:   resp.TeamID,
+		TeamName: resp.TeamName,
 	}
 
 	if err := config.SaveAuth(auth, profile); err != nil {
@@ -90,7 +91,11 @@ func authenticateWithAPIKey(client *api.Client, profile string, apiKey string) e
 	logging.Debug("Auth verified", "team_id", resp.TeamID, "method", "apikey")
 
 	fmt.Println("✓ Authentication successful")
-	fmt.Printf("✓ Team ID: %s\n", resp.TeamID)
+	if resp.TeamName != "" {
+		fmt.Printf("✓ Team: %s (%s)\n", resp.TeamName, resp.TeamID)
+	} else {
+		fmt.Printf("✓ Team ID: %s\n", resp.TeamID)
+	}
 	if profile != config.DefaultProfile {
 		fmt.Printf("✓ Profile: %s\n", profile)
 	}
@@ -120,6 +125,7 @@ func authenticateWithOAuth(client *api.Client, profile string) error {
 		RefreshToken: token.RefreshToken,
 		ExpiresAt:    time.Now().Add(time.Duration(token.ExpiresIn) * time.Second),
 		TeamID:       token.TeamID,
+		TeamName:     token.TeamName,
 	}
 
 	if err := config.SaveAuth(auth, profile); err != nil {
@@ -130,7 +136,11 @@ func authenticateWithOAuth(client *api.Client, profile string) error {
 
 	fmt.Println()
 	fmt.Println("✓ Authentication successful")
-	fmt.Printf("✓ Team ID: %s\n", token.TeamID)
+	if token.TeamName != "" {
+		fmt.Printf("✓ Team: %s (%s)\n", token.TeamName, token.TeamID)
+	} else {
+		fmt.Printf("✓ Team ID: %s\n", token.TeamID)
+	}
 	if profile != config.DefaultProfile {
 		fmt.Printf("✓ Profile: %s\n", profile)
 	}

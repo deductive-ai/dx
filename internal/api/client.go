@@ -124,8 +124,9 @@ func Ping(endpoint string) error {
 
 // VerifyResponse represents the response from auth verification
 type VerifyResponse struct {
-	TeamID string `json:"team_id"`
-	Valid  bool   `json:"valid"`
+	TeamID   string `json:"team_id"`
+	TeamName string `json:"team_name"`
+	Valid    bool   `json:"valid"`
 }
 
 // Verify verifies the authentication token with the server
@@ -202,6 +203,7 @@ type TokenResponse struct {
 	RefreshToken string `json:"refresh_token"`
 	ExpiresIn    int    `json:"expires_in"`
 	TeamID       string `json:"team_id"`
+	TeamName     string `json:"team_name"`
 	Error        string `json:"error,omitempty"`
 }
 

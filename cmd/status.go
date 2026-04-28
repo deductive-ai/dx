@@ -23,6 +23,8 @@ type StatusOutput struct {
 	Configured    bool           `json:"configured"`
 	Authenticated bool           `json:"authenticated"`
 	AuthMethod    string         `json:"auth_method,omitempty"`
+	TeamID        string         `json:"team_id,omitempty"`
+	TeamName      string         `json:"team_name,omitempty"`
 	Session       *SessionStatus `json:"session"`
 	// URL is a convenience top-level alias for session.url so that
 	// SESSION_URL=$(dx status --json | jq -r .url) works directly.
@@ -154,6 +156,14 @@ func runStatus(cmd *cobra.Command, args []string) {
 		fmt.Printf("  Status: %s\n", color.Error("✗ Not authenticated"))
 		fmt.Printf("  Run '%s' to re-authenticate.\n", color.Command("dx auth"))
 	}
+	if cfg.TeamID != "" {
+		fmt.Println()
+		fmt.Printf("%s\n", color.Title("Team"))
+		if cfg.TeamName != "" {
+			fmt.Printf("  Name: %s\n", cfg.TeamName)
+		}
+		fmt.Printf("  ID:   %s\n", cfg.TeamID)
+	}
 	fmt.Println()
 
 	// Session
@@ -184,6 +194,8 @@ func runStatusJSON(profile string) {
 	out.Endpoint = cfg.Endpoint
 	out.Authenticated = cfg.IsAuthenticated()
 	out.AuthMethod = cfg.AuthMethod
+	out.TeamID = cfg.TeamID
+	out.TeamName = cfg.TeamName
 
 	state, _ := session.LoadCurrent(profile)
 	if state != nil {
