@@ -291,7 +291,7 @@ func DeleteForProfile(profile string) error {
 		if err != nil {
 			continue
 		}
-		os.Remove(sessionPath)
+		_ = os.Remove(sessionPath)
 	}
 	_ = Clear(profile)
 	return nil

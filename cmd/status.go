@@ -131,7 +131,8 @@ func runStatus(cmd *cobra.Command, args []string) {
 	fmt.Printf("%s\n", color.Title("Authentication"))
 	if cfg.IsAuthenticated() {
 		fmt.Printf("  Status: %s\n", color.Success("✓ Authenticated"))
-		if cfg.AuthMethod == "oauth" {
+		switch cfg.AuthMethod {
+		case "oauth":
 			fmt.Printf("  Method: OAuth\n")
 			if !cfg.OAuthExpiresAt.IsZero() {
 				remaining := time.Until(cfg.OAuthExpiresAt)
@@ -143,9 +144,8 @@ func runStatus(cmd *cobra.Command, args []string) {
 					fmt.Printf("  Expires: %s\n", color.Error("Expired"))
 				}
 			}
-		} else if cfg.AuthMethod == "apikey" {
+		case "apikey":
 			fmt.Printf("  Method: API Key\n")
-			// Show partial key for identification
 			if len(cfg.APIKey) > 12 {
 				fmt.Printf("  Key: %s...%s\n", cfg.APIKey[:8], cfg.APIKey[len(cfg.APIKey)-4:])
 			}

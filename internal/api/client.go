@@ -115,7 +115,7 @@ func Ping(endpoint string) error {
 	if err != nil {
 		return fmt.Errorf("failed to reach endpoint: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Accept any response - just checking that the server responds
 	// Even redirects or 404s are fine, they indicate the server is running

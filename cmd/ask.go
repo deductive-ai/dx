@@ -106,15 +106,15 @@ func ensureSession(client *api.Client, profile string, preState *session.State, 
 		if state.LastMessageAt.IsZero() {
 			age = time.Since(state.CreatedAt)
 		}
-		fmt.Fprintf(sw, "Continuing session (%s ago)\n", formatDuration(age))
+		_, _ = fmt.Fprintf(sw, "Continuing session (%s ago)\n", formatDuration(age))
 		logging.Debug("Session loaded", "id", state.SessionID, "profile", profile)
 		return state, false
 	}
 
-	fmt.Fprintln(sw, "Creating session...")
+	_, _ = fmt.Fprintln(sw, "Creating session...")
 	resp, err := client.CreateSession(&api.SessionRequest{Mode: "ask"})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating session: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "Error creating session: %v\n", err)
 		os.Exit(1)
 	}
 	state = &session.State{
@@ -133,11 +133,11 @@ func ensureSession(client *api.Client, profile string, preState *session.State, 
 // is unavailable (404/403/410). Returns the new state, or nil on failure.
 func recoverSession(client *api.Client, profile string, sw io.Writer) *session.State {
 	_ = session.Clear(profile)
-	fmt.Fprintln(sw, "Session expired, starting fresh...")
-	fmt.Fprintln(sw, "Creating session...")
+	_, _ = fmt.Fprintln(sw, "Session expired, starting fresh...")
+	_, _ = fmt.Fprintln(sw, "Creating session...")
 	resp, err := client.CreateSession(&api.SessionRequest{Mode: "ask"})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating session: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "Error creating session: %v\n", err)
 		return nil
 	}
 	state := &session.State{
@@ -264,8 +264,8 @@ func runNonInteractiveAsk(cfg *config.Config, profile string, question string, p
 
 	state, isNew := ensureSession(client, profile, preState, sw)
 	if isNew {
-		fmt.Fprintf(sw, "Endpoint: %s | Session: %s\n", cfg.Endpoint, state.SessionID)
-		fmt.Fprintln(sw)
+		_, _ = fmt.Fprintf(sw, "Endpoint: %s | Session: %s\n", cfg.Endpoint, state.SessionID)
+		_, _ = fmt.Fprintln(sw)
 	}
 
 	// Start streaming BEFORE sending message to avoid race condition.
@@ -301,8 +301,8 @@ func runNonInteractiveAsk(cfg *config.Config, profile string, question string, p
 					newState := recoverSession(client, profile, sw)
 					if newState != nil {
 						state = newState
-						fmt.Fprintf(sw, "Endpoint: %s | Session: %s\n", cfg.Endpoint, state.SessionID)
-						fmt.Fprintln(sw)
+					_, _ = fmt.Fprintf(sw, "Endpoint: %s | Session: %s\n", cfg.Endpoint, state.SessionID)
+					_, _ = fmt.Fprintln(sw)
 						break nonInteractiveConnect
 					}
 				}
@@ -369,7 +369,7 @@ func runInteractiveAsk(cfg *config.Config, profile string, preState *session.Sta
 
 	// Set up liner for line editing and history
 	line := liner.NewLiner()
-	defer line.Close()
+	defer func() { _ = line.Close() }()
 
 	line.SetCtrlCAborts(true)
 	line.SetWordCompleter(slashCompleter)
@@ -380,7 +380,7 @@ func runInteractiveAsk(cfg *config.Config, profile string, preState *session.Sta
 	if historyPath != "" {
 		if f, err := os.Open(historyPath); err == nil {
 			_, _ = line.ReadHistory(f)
-			f.Close()
+			_ = f.Close()
 		}
 	}
 
@@ -389,7 +389,7 @@ func runInteractiveAsk(cfg *config.Config, profile string, preState *session.Sta
 		if historyPath != "" {
 			if f, err := os.Create(historyPath); err == nil {
 				_, _ = line.WriteHistory(f)
-				f.Close()
+				_ = f.Close()
 			}
 		}
 	}()
