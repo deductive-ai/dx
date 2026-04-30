@@ -30,7 +30,7 @@ Examples:
 }
 
 func init() {
-	rootCmd.AddCommand(authCmd)
+	setupCmd.AddCommand(authCmd)
 }
 
 func runAuth(cmd *cobra.Command, args []string) {
@@ -39,13 +39,13 @@ func runAuth(cmd *cobra.Command, args []string) {
 	cfg, err := config.Load(profile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s No configuration found.\n", color.Error("✗"))
-		fmt.Fprintf(os.Stderr, "Run %s to set up the CLI first.\n", color.Command("dx ask"))
+		fmt.Fprintf(os.Stderr, "Run %s to set up the CLI first.\n", color.Command("dx setup init"))
 		os.Exit(1)
 	}
 
 	if cfg.Endpoint == "" {
 		fmt.Fprintf(os.Stderr, "%s No endpoint configured.\n", color.Error("✗"))
-		fmt.Fprintf(os.Stderr, "Run %s to set up the CLI first.\n", color.Command("dx ask"))
+		fmt.Fprintf(os.Stderr, "Run %s to set up the CLI first.\n", color.Command("dx setup init"))
 		os.Exit(1)
 	}
 
@@ -56,7 +56,7 @@ func runAuth(cmd *cobra.Command, args []string) {
 		fmt.Println("This profile uses API key authentication.")
 		fmt.Println("To update your key:")
 		fmt.Println("  1) Generate a new key in Settings > API Keys")
-		fmt.Printf("  2) Run: %s\n", color.Command("dx ask"))
+		fmt.Printf("  2) Run: %s\n", color.Command("dx setup init"))
 	default:
 		if err := authenticateWithOAuth(client, profile); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)

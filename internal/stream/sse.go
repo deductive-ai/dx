@@ -56,6 +56,7 @@ type Event struct {
 type SSEClient struct {
 	url        string
 	authToken  string
+	teamID     string
 	httpClient *http.Client
 }
 
@@ -66,6 +67,11 @@ func NewSSEClient(url string, authToken string) *SSEClient {
 		authToken:  authToken,
 		httpClient: &http.Client{},
 	}
+}
+
+// SetTeamID sets the team override header for SSE requests
+func (c *SSEClient) SetTeamID(teamID string) {
+	c.teamID = teamID
 }
 
 // Stream connects to the SSE endpoint and returns a channel of events
@@ -90,6 +96,10 @@ func (c *SSEClient) Stream() (<-chan Event, <-chan error, func()) {
 
 		if c.authToken != "" {
 			req.Header.Set("Authorization", "Bearer "+c.authToken)
+		}
+
+		if c.teamID != "" {
+			req.Header.Set("X-Team-Id", c.teamID)
 		}
 
 		resp, err := c.httpClient.Do(req)
@@ -166,8 +176,11 @@ func (c *SSEClient) Stream() (<-chan Event, <-chan error, func()) {
 }
 
 // StreamResponse streams the response for a session
-func StreamResponse(baseURL string, sessionID string, authToken string) (<-chan Event, <-chan error, func()) {
+func StreamResponse(baseURL string, sessionID string, authToken string, teamID string) (<-chan Event, <-chan error, func()) {
 	url := fmt.Sprintf("%s/api/v1/sessions/%s/stream", baseURL, sessionID)
 	client := NewSSEClient(url, authToken)
+	if teamID != "" {
+		client.SetTeamID(teamID)
+	}
 	return client.Stream()
 }

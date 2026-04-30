@@ -40,61 +40,6 @@ type SessionStatus struct {
 
 var statusJSONFlag bool
 
-var statusCmd = &cobra.Command{
-	Use:   "status",
-	Short: "Show current CLI status",
-	Long: `Display the current status of the DX CLI including:
-- Current profile and endpoint
-- Authentication status
-- Active session information
-
-JSON output (--json):
-  Emits a single JSON object suitable for scripting. The session URL is
-  available at both .url (top-level shortcut) and .session.url:
-
-    dx status --json | jq -r .url
-    SESSION_URL=$(dx status --json | jq -r .url)
-
-  Full shape:
-    {
-      "profile":        "default",
-      "endpoint":       "https://app.deductive.ai",
-      "configured":     true,
-      "authenticated":  true,
-      "auth_method":    "apikey",
-      "url":            "https://app.deductive.ai/threads/<id>",
-      "session": {
-        "id":                "<uuid>",
-        "url":               "https://app.deductive.ai/threads/<id>",
-        "created_at":        "2024-01-01T00:00:00Z",
-        "uploads_available": 8,
-        "uploads_total":     10
-      }
-    }
-  When no active session exists, "session" and "url" are null/omitted.
-
-Examples:
-  dx status
-  dx status --json
-  dx status --json | jq -r .url
-  dx status --json --profile=staging`,
-	Example: `  # Check connectivity and session
-  dx status
-
-  # Get session URL for scripting
-  dx status --json | jq -r .url
-
-  # Check status of a different profile
-  dx status --profile=staging`,
-	Hidden: true,
-	Run:    runStatus,
-}
-
-func init() {
-	rootCmd.AddCommand(statusCmd)
-	statusCmd.Flags().BoolVar(&statusJSONFlag, "json", false, "Output status as JSON")
-}
-
 func runStatus(cmd *cobra.Command, args []string) {
 	profile := GetProfile()
 
@@ -114,7 +59,7 @@ func runStatus(cmd *cobra.Command, args []string) {
 	cfg, err := config.Load(profile)
 	if err != nil {
 		fmt.Printf("  Status: %s\n", color.Error("Not configured"))
-		fmt.Printf("\n  Run '%s' to get started.\n", color.Command("dx ask"))
+		fmt.Printf("\n  Run '%s' to get started.\n", color.Command("dx setup init"))
 		return
 	}
 

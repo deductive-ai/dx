@@ -29,7 +29,7 @@ func LoadOrBootstrap(profile string) *config.Config {
 	// No env vars, no config file -- interactive bootstrap
 	if !isInteractiveTerminal() {
 		fmt.Fprintln(os.Stderr, "Error: No configuration found and stdin is not a terminal.")
-		fmt.Fprintf(os.Stderr, "Set DX_API_KEY and DX_ENDPOINT environment variables, or run %s interactively.\n", color.Command("dx ask"))
+		fmt.Fprintf(os.Stderr, "Set DX_API_KEY and DX_ENDPOINT environment variables, or run %s interactively.\n", color.Command("dx setup init"))
 		os.Exit(1)
 	}
 

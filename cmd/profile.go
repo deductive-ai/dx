@@ -79,7 +79,7 @@ Examples:
 
 func init() {
 	profileCmd.Hidden = true
-	rootCmd.AddCommand(profileCmd)
+	setupCmd.AddCommand(profileCmd)
 	profileCmd.AddCommand(profileCreateCmd)
 	profileCmd.AddCommand(profileDeleteCmd)
 	profileCmd.AddCommand(profileUseCmd)
@@ -99,7 +99,7 @@ func runProfileList(cmd *cobra.Command, args []string) {
 
 	if len(profiles) == 0 {
 		fmt.Println("No profiles configured.")
-		fmt.Println("Run 'dx ask' to get started.")
+		fmt.Println("Run 'dx setup init' to get started.")
 		return
 	}
 
