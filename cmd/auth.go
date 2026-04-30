@@ -4,8 +4,10 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -91,6 +93,8 @@ func authenticateWithAPIKey(client *api.Client, profile string, apiKey string) e
 	logging.Debug("Auth verified", "team_id", resp.TeamID, "method", "apikey")
 
 	fmt.Println("✓ Authentication successful")
+
+	// API keys are single-team scoped, so no team picker needed
 	if resp.TeamName != "" {
 		fmt.Printf("✓ Team: %s (%s)\n", resp.TeamName, resp.TeamID)
 	} else {
@@ -136,13 +140,87 @@ func authenticateWithOAuth(client *api.Client, profile string) error {
 
 	fmt.Println()
 	fmt.Println("✓ Authentication successful")
-	if token.TeamName != "" {
-		fmt.Printf("✓ Team: %s (%s)\n", token.TeamName, token.TeamID)
-	} else {
-		fmt.Printf("✓ Team ID: %s\n", token.TeamID)
+
+	if err := promptTeamSelection(profile); err != nil {
+		logging.Debug("Team selection skipped", "error", err)
+		if token.TeamName != "" {
+			fmt.Printf("✓ Team: %s (%s)\n", token.TeamName, token.TeamID)
+		} else if token.TeamID != "" {
+			fmt.Printf("✓ Team ID: %s\n", token.TeamID)
+		}
 	}
+
 	if profile != config.DefaultProfile {
 		fmt.Printf("✓ Profile: %s\n", profile)
 	}
+	return nil
+}
+
+// promptTeamSelection lists the user's teams after auth. If there are
+// multiple teams, it prompts the user to pick one. For a single team
+// it just confirms the selection. Requires an interactive terminal.
+func promptTeamSelection(profile string) error {
+	cfg, err := config.Load(profile)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	authedClient := api.NewClient(cfg)
+	teamsResp, err := authedClient.ListTeams()
+	if err != nil {
+		return fmt.Errorf("failed to list teams: %w", err)
+	}
+
+	if len(teamsResp.Teams) <= 1 {
+		if len(teamsResp.Teams) == 1 {
+			t := teamsResp.Teams[0]
+			cfg.TeamID = t.ID
+			cfg.TeamName = t.Name
+			_ = config.Save(cfg, profile)
+			fmt.Printf("✓ Team: %s\n", color.Info(t.Name))
+		}
+		return nil
+	}
+
+	if !isInteractiveTerminal() {
+		fmt.Printf("✓ Team: %s (use %s to change)\n",
+			color.Info(cfg.TeamName), color.Command("dx team switch"))
+		return nil
+	}
+
+	fmt.Println()
+	fmt.Println("  You belong to multiple teams:")
+	defaultIdx := 1
+	for i, t := range teamsResp.Teams {
+		fmt.Printf("    %d. %s\n", i+1, t.Name)
+		if t.ID == cfg.TeamID {
+			defaultIdx = i + 1
+		}
+	}
+	fmt.Println()
+
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Printf("  Select a team [%d]: ", defaultIdx)
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(input)
+
+	selectedIdx := defaultIdx
+	if input != "" {
+		n, err := strconv.Atoi(input)
+		if err != nil || n < 1 || n > len(teamsResp.Teams) {
+			fmt.Printf("  Invalid selection, using default (%d)\n", defaultIdx)
+			n = defaultIdx
+		}
+		selectedIdx = n
+	}
+
+	selected := teamsResp.Teams[selectedIdx-1]
+	cfg.TeamID = selected.ID
+	cfg.TeamName = selected.Name
+	if err := config.Save(cfg, profile); err != nil {
+		return fmt.Errorf("failed to save team selection: %w", err)
+	}
+
+	fmt.Printf("✓ Team: %s\n", color.Info(selected.Name))
 	return nil
 }
