@@ -23,6 +23,7 @@ type Client struct {
 	baseURL    string
 	authToken  string
 	authMethod string
+	teamID     string
 	httpClient *http.Client
 }
 
@@ -43,6 +44,7 @@ func NewClient(cfg *config.Config) *Client {
 		baseURL:    cfg.Endpoint,
 		authToken:  cfg.GetAuthToken(),
 		authMethod: cfg.AuthMethod,
+		teamID:     cfg.TeamID,
 		httpClient: &http.Client{
 			Timeout:   30 * time.Second,
 			Transport: newTransport(),
@@ -67,6 +69,11 @@ func (c *Client) SetAuthToken(token string, method string) {
 	c.authMethod = method
 }
 
+// SetTeamID sets the team ID for the X-Team-Id header
+func (c *Client) SetTeamID(teamID string) {
+	c.teamID = teamID
+}
+
 // doRequest performs an HTTP request with proper headers
 func (c *Client) doRequest(method, path string, body interface{}) (*http.Response, error) {
 	var bodyReader io.Reader
@@ -88,6 +95,10 @@ func (c *Client) doRequest(method, path string, body interface{}) (*http.Respons
 
 	if c.authToken != "" {
 		req.Header.Set("Authorization", "Bearer "+c.authToken)
+	}
+
+	if c.teamID != "" {
+		req.Header.Set("X-Team-Id", c.teamID)
 	}
 
 	logging.Debug("API request", "method", method, "path", path)
@@ -124,8 +135,9 @@ func Ping(endpoint string) error {
 
 // VerifyResponse represents the response from auth verification
 type VerifyResponse struct {
-	TeamID string `json:"team_id"`
-	Valid  bool   `json:"valid"`
+	TeamID   string `json:"team_id"`
+	TeamName string `json:"team_name"`
+	Valid    bool   `json:"valid"`
 }
 
 // Verify verifies the authentication token with the server
@@ -158,6 +170,42 @@ func (c *Client) Verify(token string) (*VerifyResponse, error) {
 	}
 
 	var result VerifyResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &result, nil
+}
+
+// Team represents a single team entry from the teams endpoint
+type Team struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// TeamsResponse represents the response from the teams endpoint
+type TeamsResponse struct {
+	Teams []Team `json:"teams"`
+}
+
+// ListTeams returns the teams the authenticated user belongs to
+func (c *Client) ListTeams() (*TeamsResponse, error) {
+	resp, err := c.doRequest("GET", "/api/v1/auth/teams", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, fmt.Errorf("not authenticated — run 'dx auth' first")
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to list teams: %s", string(body))
+	}
+
+	var result TeamsResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
@@ -202,6 +250,7 @@ type TokenResponse struct {
 	RefreshToken string `json:"refresh_token"`
 	ExpiresIn    int    `json:"expires_in"`
 	TeamID       string `json:"team_id"`
+	TeamName     string `json:"team_name"`
 	Error        string `json:"error,omitempty"`
 }
 

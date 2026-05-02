@@ -60,12 +60,16 @@ var skillPrintCmd = &cobra.Command{
 Useful for piping into a custom location:
   dx skill print > /path/to/SKILL.md`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Print(skillContent)
+		printSkillContent()
 	},
 }
 
+func printSkillContent() {
+	fmt.Print(skillContent)
+}
+
 func init() {
-	rootCmd.AddCommand(skillCmd)
+	setupCmd.AddCommand(skillCmd)
 	skillCmd.AddCommand(skillInstallCmd)
 	skillCmd.AddCommand(skillPrintCmd)
 

@@ -106,7 +106,7 @@ func ensureSession(client *api.Client, profile string, preState *session.State, 
 		if state.LastMessageAt.IsZero() {
 			age = time.Since(state.CreatedAt)
 		}
-		_, _ = fmt.Fprintf(sw, "Continuing session (%s ago)\n", formatDuration(age))
+		_, _ = fmt.Fprintf(sw, "Continuing session (%s ago) — use --new for a fresh start\n", formatDuration(age))
 		logging.Debug("Session loaded", "id", state.SessionID, "profile", profile)
 		return state, false
 	}
@@ -133,7 +133,12 @@ func ensureSession(client *api.Client, profile string, preState *session.State, 
 // is unavailable (404/403/410). Returns the new state, or nil on failure.
 func recoverSession(client *api.Client, profile string, sw io.Writer) *session.State {
 	_ = session.Clear(profile)
-	_, _ = fmt.Fprintln(sw, "Session expired, starting fresh...")
+	cfg, _ := config.Load(profile)
+	if cfg != nil && cfg.TeamName != "" {
+		_, _ = fmt.Fprintf(sw, "Session expired for %s, starting fresh...\n", cfg.TeamName)
+	} else {
+		_, _ = fmt.Fprintln(sw, "Session expired, starting fresh...")
+	}
 	_, _ = fmt.Fprintln(sw, "Creating session...")
 	resp, err := client.CreateSession(&api.SessionRequest{Mode: "ask"})
 	if err != nil {
@@ -264,7 +269,11 @@ func runNonInteractiveAsk(cfg *config.Config, profile string, question string, p
 
 	state, isNew := ensureSession(client, profile, preState, sw)
 	if isNew {
-		_, _ = fmt.Fprintf(sw, "Endpoint: %s | Session: %s\n", cfg.Endpoint, state.SessionID)
+		if cfg.TeamName != "" {
+			_, _ = fmt.Fprintf(sw, "Endpoint: %s | Team: %s | Session: %s\n", cfg.Endpoint, cfg.TeamName, state.SessionID)
+		} else {
+			_, _ = fmt.Fprintf(sw, "Endpoint: %s | Session: %s\n", cfg.Endpoint, state.SessionID)
+		}
 		_, _ = fmt.Fprintln(sw)
 	}
 
@@ -277,7 +286,7 @@ func runNonInteractiveAsk(cfg *config.Config, profile string, question string, p
 	recoveryAttempted := false
 
 	for !connected {
-		events, streamErrors, cancel = stream.StreamResponse(cfg.Endpoint, state.SessionID, cfg.GetAuthToken())
+		events, streamErrors, cancel = stream.StreamResponse(cfg.Endpoint, state.SessionID, cfg.GetAuthToken(), cfg.TeamID)
 		connectTimeout := time.After(30 * time.Second)
 
 	nonInteractiveConnect:
@@ -301,8 +310,12 @@ func runNonInteractiveAsk(cfg *config.Config, profile string, question string, p
 					newState := recoverSession(client, profile, sw)
 					if newState != nil {
 						state = newState
-					_, _ = fmt.Fprintf(sw, "Endpoint: %s | Session: %s\n", cfg.Endpoint, state.SessionID)
-					_, _ = fmt.Fprintln(sw)
+						if cfg.TeamName != "" {
+							_, _ = fmt.Fprintf(sw, "Endpoint: %s | Team: %s | Session: %s\n", cfg.Endpoint, cfg.TeamName, state.SessionID)
+						} else {
+							_, _ = fmt.Fprintf(sw, "Endpoint: %s | Session: %s\n", cfg.Endpoint, state.SessionID)
+						}
+						_, _ = fmt.Fprintln(sw)
 						break nonInteractiveConnect
 					}
 				}
@@ -352,6 +365,14 @@ func getHistoryFilePath() string {
 	return filepath.Join(configDir, "history")
 }
 
+func printSessionBanner(cfg *config.Config, state *session.State) {
+	if cfg.TeamName != "" {
+		fmt.Printf("Endpoint: %s | Team: %s | Session: %s\n", color.Info(cfg.Endpoint), color.Info(cfg.TeamName), color.SessionID(state.SessionID))
+	} else {
+		fmt.Printf("Endpoint: %s | Session: %s\n", color.Info(cfg.Endpoint), color.SessionID(state.SessionID))
+	}
+}
+
 func runInteractiveAsk(cfg *config.Config, profile string, preState *session.State) {
 	_, span := telemetry.StartSpan(context.Background(), "dx.ask",
 		attribute.String("mode", "interactive"),
@@ -363,7 +384,7 @@ func runInteractiveAsk(cfg *config.Config, profile string, preState *session.Sta
 
 	state, _ := ensureSession(client, profile, preState, os.Stdout)
 
-	fmt.Printf("Endpoint: %s | Session: %s\n", color.Info(cfg.Endpoint), color.SessionID(state.SessionID))
+	printSessionBanner(cfg, state)
 	fmt.Printf("%s\n", color.Muted("Type your questions. Use /help for commands. Press Ctrl+D to exit."))
 	fmt.Println()
 
@@ -426,7 +447,7 @@ func runInteractiveAsk(cfg *config.Config, profile string, preState *session.Sta
 		if strings.HasPrefix(question, "/") {
 			if newState := handleSlashCommand(question, cfg, state, profile, line); newState != nil {
 				state = newState
-				fmt.Printf("Endpoint: %s | Session: %s\n", color.Info(cfg.Endpoint), color.SessionID(state.SessionID))
+				printSessionBanner(cfg, state)
 				fmt.Println()
 			}
 			continue
@@ -442,7 +463,7 @@ func runInteractiveAsk(cfg *config.Config, profile string, preState *session.Sta
 
 	connectAttempt:
 		for !connected {
-			events, streamErrors, cancel = stream.StreamResponse(cfg.Endpoint, state.SessionID, cfg.GetAuthToken())
+			events, streamErrors, cancel = stream.StreamResponse(cfg.Endpoint, state.SessionID, cfg.GetAuthToken(), cfg.TeamID)
 			connectTimeout := time.After(30 * time.Second)
 
 		connectLoop:
@@ -466,7 +487,7 @@ func runInteractiveAsk(cfg *config.Config, profile string, preState *session.Sta
 						newState := recoverSession(client, profile, os.Stdout)
 						if newState != nil {
 							state = newState
-							fmt.Printf("Endpoint: %s | Session: %s\n", color.Info(cfg.Endpoint), color.SessionID(state.SessionID))
+							printSessionBanner(cfg, state)
 							continue connectAttempt
 						}
 					}

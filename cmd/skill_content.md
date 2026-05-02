@@ -25,7 +25,7 @@ dx upgrade
 
 ## First-time setup
 
-Running `dx ask` on a fresh install auto-bootstraps: prompts for endpoint URL, then either paste a `dak_...` API key or press Enter for OAuth device-code flow.
+Run `dx setup init` to configure the CLI: prompts for endpoint URL, then either paste a `dak_...` API key or press Enter for OAuth device-code flow. Running `dx ask` on a fresh install also auto-bootstraps.
 
 ## Commands
 
@@ -72,27 +72,54 @@ dx ask --timeout 60 "long analysis"
 | `/help` | Show available commands |
 | `exit` | End the session |
 
-### dx config
+### dx setup
 
-View or change settings.
+Configure endpoint, auth, and skills. Bare `dx setup` shows available subcommands.
 
 ```bash
-# Show current configuration
-dx config
+# Run setup wizard (endpoint + auth)
+dx setup init
 
-# Re-run setup wizard (change endpoint or auth)
-dx config setup
+# Re-authenticate
+dx setup auth
 
-# Reset all configuration (re-setup on next dx ask)
-dx config reset
+# Install SKILL.md to agent skill directories
+dx setup skill install
+
+# Overwrite an existing skill installation
+dx setup skill install --force
+
+# Print the embedded SKILL.md to stdout
+dx setup skill print
+
+# Reset all configuration (re-setup with dx setup init)
+dx setup reset
+
+# View current config
+dx setup config
 ```
 
-### dx auth
+`dx setup skill install` writes to all user-level agent skill directories:
+- `~/.claude/skills/dx/SKILL.md` (Claude Code)
+- `~/.cursor/skills/dx/SKILL.md` (Cursor)
+- `~/.copilot/skills/dx/SKILL.md` (GitHub Copilot)
+- `~/.agents/skills/dx/SKILL.md` (OpenAI Codex)
 
-Re-authenticate (OAuth device flow or API key instructions).
+One install covers every agent in every project.
+
+### dx info
+
+Show current CLI status, team, session, and version.
 
 ```bash
-dx auth
+# Human-readable status
+dx info
+
+# JSON output for scripting
+dx info --json
+
+# Version only
+dx info version
 ```
 
 ### dx upgrade
@@ -103,28 +130,17 @@ Upgrade dx to the latest release from GitHub.
 dx upgrade
 ```
 
-### dx skill
+### dx team
 
-Install or print the dx SKILL.md for AI agent integration.
+List and switch teams.
 
 ```bash
-# Install SKILL.md to the appropriate agent skill directory
-dx skill install
+# List teams (marks active with *)
+dx team
 
-# Overwrite an existing installation
-dx skill install --force
-
-# Print the embedded SKILL.md to stdout
-dx skill print
+# Switch to a different team
+dx team switch <name-or-id>
 ```
-
-`dx skill install` writes to all user-level agent skill directories:
-- `~/.claude/skills/dx/SKILL.md` (Claude Code)
-- `~/.cursor/skills/dx/SKILL.md` (Cursor)
-- `~/.copilot/skills/dx/SKILL.md` (GitHub Copilot)
-- `~/.agents/skills/dx/SKILL.md` (OpenAI Codex)
-
-One install covers every agent in every project.
 
 ## Global flags
 

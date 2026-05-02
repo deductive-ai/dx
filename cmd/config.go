@@ -16,44 +16,16 @@ import (
 
 var configCmd = &cobra.Command{
 	Use:   "config",
-	Short: "View or change settings",
-	Long: `Display the current configuration.
-
-Use subcommands to change settings:
-  dx config setup    Re-run the setup wizard (endpoint + auth)
-  dx config reset    Reset all configuration
+	Short: "View current configuration",
+	Long: `Display the current endpoint and authentication status.
 
 Examples:
-  dx config
-  dx config setup`,
+  dx setup config`,
 	Run: runConfigShow,
 }
 
-var configSetupCmd = &cobra.Command{
-	Use:   "setup",
-	Short: "Re-run the setup wizard",
-	Long: `Re-run the interactive setup wizard to change endpoint and authentication.
-
-This clears any existing configuration and walks you through setup again.
-
-Examples:
-  dx config setup`,
-	Run: runConfigSetup,
-}
-
-var configResetCmd = &cobra.Command{
-	Use:   "reset",
-	Short: "Reset configuration",
-	Long: `Delete all configuration and session data.
-
-On the next run of "dx ask", the setup wizard will run again.`,
-	Run: runConfigReset,
-}
-
 func init() {
-	rootCmd.AddCommand(configCmd)
-	configCmd.AddCommand(configSetupCmd)
-	configCmd.AddCommand(configResetCmd)
+	setupCmd.AddCommand(configCmd)
 }
 
 func runConfigShow(cmd *cobra.Command, args []string) {
@@ -62,7 +34,7 @@ func runConfigShow(cmd *cobra.Command, args []string) {
 	cfg, err := config.Load(profile)
 	if err != nil {
 		fmt.Println("Not configured yet.")
-		fmt.Printf("Run %s to get started.\n", color.Command("dx ask"))
+		fmt.Printf("Run %s to get started.\n", color.Command("dx setup init"))
 		return
 	}
 
@@ -80,18 +52,6 @@ func runConfigShow(cmd *cobra.Command, args []string) {
 		}
 	}
 	fmt.Printf("  Auth:      %s\n", authStatus)
-}
-
-func runConfigSetup(cmd *cobra.Command, args []string) {
-	profile := GetProfile()
-
-	if config.ProfileExists(profile) {
-		_ = session.DeleteForProfile(profile)
-		_ = config.DeleteProfile(profile)
-	}
-
-	runBootstrap(profile)
-	fmt.Printf("\n%s Configuration saved.\n", color.Success("✓"))
 }
 
 func runConfigReset(cmd *cobra.Command, args []string) {

@@ -36,6 +36,7 @@ func EnsureAuth(cfg *config.Config, profile string) (*config.Config, error) {
 		RefreshToken: resp.RefreshToken,
 		ExpiresAt:    time.Now().Add(time.Duration(resp.ExpiresIn) * time.Second),
 		TeamID:       resp.TeamID,
+		TeamName:     resp.TeamName,
 	}
 
 	if err := config.SaveAuth(auth, profile); err != nil {

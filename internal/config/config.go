@@ -54,6 +54,7 @@ type Config struct {
 	APIKey            string    `toml:"api_key,omitempty"`
 	EncryptedAPIKey   string    `toml:"encrypted_api_key,omitempty"`
 	TeamID            string    `toml:"team_id,omitempty"`
+	TeamName          string    `toml:"team_name,omitempty"`
 }
 
 // Auth represents authentication configuration
@@ -64,6 +65,7 @@ type Auth struct {
 	ExpiresAt    time.Time `toml:"expires_at,omitempty"`
 	APIKey       string    `toml:"api_key,omitempty"`
 	TeamID       string    `toml:"team_id,omitempty"`
+	TeamName     string    `toml:"team_name,omitempty"`
 }
 
 // GetConfigDir returns the base config directory path (~/.dx/)
@@ -289,6 +291,7 @@ func SaveAuth(auth *Auth, profile string) error {
 
 	cfg.AuthMethod = auth.Method
 	cfg.TeamID = auth.TeamID
+	cfg.TeamName = auth.TeamName
 
 	switch auth.Method {
 	case "oauth":

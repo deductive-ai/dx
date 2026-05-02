@@ -35,7 +35,14 @@ var rootCmd = &cobra.Command{
 Ask questions about your infrastructure, pipe in data, get answers.
 
   dx ask "what's using the most memory?"
-  ps aux | dx ask "which process needs attention?"`,
+  ps aux | dx ask "which process needs attention?"
+
+Commands:
+  ask      Ask a question (default when you just type dx)
+  setup    Configure endpoint, auth, and skills
+  info     Show status, version, and diagnostics
+  upgrade  Update to the latest version
+  team     List and switch teams`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		profileExplicit = cmd.Flags().Changed("profile")
 		if noColorFlag {
@@ -64,6 +71,7 @@ var versionCmd = &cobra.Command{
 		printVersion()
 	},
 }
+
 
 func printVersion() {
 	fmt.Printf("dx version %s\n", Version)
@@ -114,7 +122,6 @@ func unhideAdvanced() {
 		return
 	}
 	profileCmd.Hidden = false
-	statusCmd.Hidden = false
 	_ = rootCmd.PersistentFlags().SetAnnotation("profile", cobra.BashCompOneRequiredFlag, []string{""})
 	rootCmd.PersistentFlags().Lookup("profile").Hidden = false
 }

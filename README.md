@@ -64,26 +64,42 @@ dx> what's the p99 latency on the payments service?
 |---------|-------------|
 | `dx` | Start an interactive session (same as `dx ask`) |
 | `dx ask` | Ask Deductive a question (setup on first use) |
-| `dx auth` | Re-authenticate |
-| `dx config` | View or change settings |
+| `dx setup` | Configure endpoint, auth, and skills |
+| `dx info` | Show status, version, and diagnostics |
 | `dx upgrade` | Upgrade to the latest version |
-| `dx skill install` | Install skill for all agents (Cursor, Claude Code, Copilot, Codex) |
+| `dx team` | List and switch teams |
 
 Run `dx --help` for full details.
 
-## Configuration
+## Setup & Configuration
 
-Configuration is stored in `~/.dx/` and managed via `dx config`.
+Configuration is stored in `~/.dx/` and managed via `dx setup`.
 
 ```bash
-# View current settings
-dx config
+# Run setup wizard (endpoint + auth)
+dx setup init
 
-# Re-run setup wizard (change endpoint or auth)
-dx config setup
+# Re-authenticate
+dx setup auth
 
-# Reset all configuration (re-setup on next dx ask)
-dx config reset
+# Install agent skill (Cursor, Claude Code, Copilot, Codex)
+dx setup skill install
+
+# Reset all configuration
+dx setup reset
+
+# View current config
+dx setup config
+```
+
+## Team Management
+
+```bash
+# List teams
+dx team
+
+# Switch to a different team
+dx team switch <name-or-id>
 ```
 
 ## License
