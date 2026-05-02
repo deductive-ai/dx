@@ -118,6 +118,10 @@ func TestCheckExitsOnBlockedVersion(t *testing.T) {
 	if err != nil {
 		t.Skipf("cannot determine cache path: %v", err)
 	}
+	// Ensure the cache directory exists (it won't in CI).
+	if err := os.MkdirAll(filepath.Dir(realPath), 0700); err != nil {
+		t.Fatalf("creating cache dir: %v", err)
+	}
 	// Backup and restore the real cache so the test is hermetic.
 	origData, readErr := os.ReadFile(realPath)
 	if err := writeCache(realPath, cache); err != nil {
