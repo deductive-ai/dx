@@ -4,9 +4,7 @@
 package cmd
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -19,21 +17,23 @@ import (
 	"github.com/deductive-ai/dx/internal/api"
 	"github.com/deductive-ai/dx/internal/color"
 	"github.com/deductive-ai/dx/internal/config"
-	"github.com/deductive-ai/dx/internal/logging"
 	"github.com/deductive-ai/dx/internal/render"
 	"github.com/deductive-ai/dx/internal/session"
 	"github.com/deductive-ai/dx/internal/stream"
-	"github.com/deductive-ai/dx/internal/telemetry"
 
-	"github.com/peterh/liner"
 	"github.com/spf13/cobra"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 var askCmd = &cobra.Command{
 	Use:   "ask [question]",
 	Short: "Ask a question to Deductive AI",
 	Long: `Ask a question to Deductive AI and receive a streaming response.
+
+Quick answers where you expect follow-ups. Good for iterative exploration:
+ask a question, get a response, refine with follow-ups. Sessions auto-resume
+so conversation flows naturally.
+
+For deep root cause analysis, use "dx investigate" instead.
 
 Interactive mode (no arguments):
   dx ask
@@ -87,80 +87,9 @@ func init() {
 	askCmd.Flags().BoolVar(&askNewFlag, "new", false, "Start a new session (ignore any existing session)")
 }
 
-// ensureSession loads an existing session or creates a new one.
-// Returns the session state and whether a new session was created.
-func ensureSession(client *api.Client, profile string, preState *session.State, sw io.Writer) (*session.State, bool) {
-	state := preState
-	if state == nil || state.Profile != profile {
-		var err error
-		state, err = session.LoadCurrent(profile)
-		if err != nil {
-			state = nil
-		}
-	}
-
-	reusing := state != nil && state.Profile == profile && !state.IsExpired() && !askNewFlag
-
-	if reusing {
-		age := time.Since(state.LastMessageAt)
-		if state.LastMessageAt.IsZero() {
-			age = time.Since(state.CreatedAt)
-		}
-		_, _ = fmt.Fprintf(sw, "Continuing session (%s ago) — use --new for a fresh start\n", formatDuration(age))
-		logging.Debug("Session loaded", "id", state.SessionID, "profile", profile)
-		return state, false
-	}
-
-	_, _ = fmt.Fprintln(sw, "Creating session...")
-	resp, err := client.CreateSession(&api.SessionRequest{Mode: "ask"})
-	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "Error creating session: %v\n", err)
-		os.Exit(1)
-	}
-	state = &session.State{
-		SessionID: resp.SessionID,
-		Profile:   profile,
-		URL:       resp.URL,
-		CreatedAt: time.Now(),
-	}
-	_ = session.Save(state)
-	_ = session.SetCurrentSessionID(state.SessionID, profile)
-	logging.Debug("Session created", "id", resp.SessionID, "profile", profile)
-	return state, true
-}
-
-// recoverSession creates a fresh session after detecting that the current one
-// is unavailable (404/403/410). Returns the new state, or nil on failure.
-func recoverSession(client *api.Client, profile string, sw io.Writer) *session.State {
-	_ = session.Clear(profile)
-	cfg, _ := config.Load(profile)
-	if cfg != nil && cfg.TeamName != "" {
-		_, _ = fmt.Fprintf(sw, "Session expired for %s, starting fresh...\n", cfg.TeamName)
-	} else {
-		_, _ = fmt.Fprintln(sw, "Session expired, starting fresh...")
-	}
-	_, _ = fmt.Fprintln(sw, "Creating session...")
-	resp, err := client.CreateSession(&api.SessionRequest{Mode: "ask"})
-	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "Error creating session: %v\n", err)
-		return nil
-	}
-	state := &session.State{
-		SessionID: resp.SessionID,
-		Profile:   profile,
-		URL:       resp.URL,
-		CreatedAt: time.Now(),
-	}
-	_ = session.Save(state)
-	_ = session.SetCurrentSessionID(state.SessionID, profile)
-	logging.Debug("Session recovered", "id", resp.SessionID, "profile", profile)
-	return state
-}
-
 func runAsk(cmd *cobra.Command, args []string) {
 	profile := GetProfile()
 
-	// Check config and auth (env vars → config file → interactive bootstrap)
 	cfg := LoadOrBootstrap(profile)
 
 	var err error
@@ -170,52 +99,62 @@ func runAsk(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	// If --session flag provided, load/resume that session in-memory and pass
-	// it through to downstream helpers. We deliberately do NOT depend on
-	// session.LoadCurrent() (which reads ~/.dx/profiles/<p>/current_session)
-	// for this invocation: that pointer file is process-global, so two
-	// concurrent `dx ask -s SID_A` and `dx ask -s SID_B` invocations would
-	// race on it and both could end up using whichever SID wrote last.
-	// Threading state in-memory makes parallel `dx ask -s` invocations safe.
-	var explicitState *session.State
-	if askSessionFlag != "" {
-		client := api.NewClient(cfg)
-
-		// Support short ID prefix matching
-		resolvedID := askSessionFlag
-		if resolved, err := session.ResolveShortID(askSessionFlag, profile); err == nil {
-			resolvedID = resolved
-		}
-
-		resp, err := client.GetSession(resolvedID)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error resuming session: %v\n", err)
-			os.Exit(1)
-		}
-
-		existingState, _ := session.Load(resolvedID)
-		createdAt := time.Now()
-		if existingState != nil {
-			if !existingState.CreatedAt.IsZero() {
-				createdAt = existingState.CreatedAt
-			}
-		}
-
-		explicitState = &session.State{
-			SessionID: resp.SessionID,
-			Profile:   profile,
-			URL:       resp.URL,
-			CreatedAt: createdAt,
-		}
-		_ = session.Save(explicitState)
-		// Update the per-profile current_session pointer for the convenience
-		// of subsequent invocations without -s. This is racy across parallel
-		// `dx ask -s` runs, but is harmless because each running invocation
-		// uses its own explicitState above and never reads the pointer.
-		_ = session.SetCurrentSessionID(explicitState.SessionID, profile)
+	mode := &SessionMode{
+		APIMode:  "ask",
+		Persist:  true,
+		ForceNew: askNewFlag,
 	}
 
-	// Check for piped input
+	var explicitState *session.State
+	if askSessionFlag != "" {
+		explicitState = resolveExplicitSession(cfg, profile, askSessionFlag)
+	}
+
+	question := buildQuestion(args)
+
+	if question != "" {
+		runNonInteractive(cfg, profile, question, explicitState, mode, askTimeoutFlag)
+	} else {
+		runInteractive(cfg, profile, explicitState, mode, askTimeoutFlag)
+	}
+}
+
+// resolveExplicitSession resolves a --session flag value to a session state.
+func resolveExplicitSession(cfg *config.Config, profile string, sessionFlag string) *session.State {
+	client := api.NewClient(cfg)
+
+	resolvedID := sessionFlag
+	if resolved, err := session.ResolveShortID(sessionFlag, profile); err == nil {
+		resolvedID = resolved
+	}
+
+	resp, err := client.GetSession(resolvedID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error resuming session: %v\n", err)
+		os.Exit(1)
+	}
+
+	existingState, _ := session.Load(resolvedID)
+	createdAt := time.Now()
+	if existingState != nil {
+		if !existingState.CreatedAt.IsZero() {
+			createdAt = existingState.CreatedAt
+		}
+	}
+
+	state := &session.State{
+		SessionID: resp.SessionID,
+		Profile:   profile,
+		URL:       resp.URL,
+		CreatedAt: createdAt,
+	}
+	_ = session.Save(state)
+	_ = session.SetCurrentSessionID(state.SessionID, profile)
+	return state
+}
+
+// buildQuestion constructs the question from CLI args and/or piped stdin.
+func buildQuestion(args []string) string {
 	var pipedQuestion string
 	stat, _ := os.Stdin.Stat()
 	if (stat.Mode()&os.ModeCharDevice) == 0 && (stat.Mode()&os.ModeNamedPipe) != 0 {
@@ -225,7 +164,6 @@ func runAsk(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	// Build question from CLI args and/or piped input
 	question := strings.Join(args, " ")
 	if pipedQuestion != "" {
 		if question != "" {
@@ -234,12 +172,7 @@ func runAsk(cmd *cobra.Command, args []string) {
 			question = pipedQuestion
 		}
 	}
-
-	if question != "" {
-		runNonInteractiveAsk(cfg, profile, question, explicitState)
-	} else {
-		runInteractiveAsk(cfg, profile, explicitState)
-	}
+	return question
 }
 
 // formatByteSize formats a byte count for display.
@@ -256,273 +189,11 @@ func formatByteSize(bytes int) string {
 	}
 }
 
-func runNonInteractiveAsk(cfg *config.Config, profile string, question string, preState *session.State) {
-	_, span := telemetry.StartSpan(context.Background(), "dx.ask",
-		attribute.String("mode", "non-interactive"),
-		attribute.String("profile", profile),
-	)
-	defer span.End()
-
-	client := api.NewClient(cfg)
-
-	sw := statusWriter()
-
-	state, isNew := ensureSession(client, profile, preState, sw)
-	if isNew {
-		if cfg.TeamName != "" {
-			_, _ = fmt.Fprintf(sw, "Endpoint: %s | Team: %s | Session: %s\n", cfg.Endpoint, cfg.TeamName, state.SessionID)
-		} else {
-			_, _ = fmt.Fprintf(sw, "Endpoint: %s | Session: %s\n", cfg.Endpoint, state.SessionID)
-		}
-		_, _ = fmt.Fprintln(sw)
-	}
-
-	// Start streaming BEFORE sending message to avoid race condition.
-	// If the session is unavailable (404/403/410), auto-recover once.
-	var events <-chan stream.Event
-	var streamErrors <-chan error
-	var cancel func()
-	connected := false
-	recoveryAttempted := false
-
-	for !connected {
-		events, streamErrors, cancel = stream.StreamResponse(cfg.Endpoint, state.SessionID, cfg.GetAuthToken(), cfg.TeamID)
-		connectTimeout := time.After(30 * time.Second)
-
-	nonInteractiveConnect:
-		for {
-			select {
-			case event, ok := <-events:
-				if !ok {
-					fmt.Fprintln(os.Stderr, color.Error("✗ Connection closed unexpectedly"))
-					cancel()
-					os.Exit(1)
-				}
-				if event.Type == "connected" {
-					connected = true
-					break nonInteractiveConnect
-				}
-			case err := <-streamErrors:
-				cancel()
-				var sessionErr *stream.SessionUnavailableError
-				if errors.As(err, &sessionErr) && !recoveryAttempted {
-					recoveryAttempted = true
-					newState := recoverSession(client, profile, sw)
-					if newState != nil {
-						state = newState
-						if cfg.TeamName != "" {
-							_, _ = fmt.Fprintf(sw, "Endpoint: %s | Team: %s | Session: %s\n", cfg.Endpoint, cfg.TeamName, state.SessionID)
-						} else {
-							_, _ = fmt.Fprintf(sw, "Endpoint: %s | Session: %s\n", cfg.Endpoint, state.SessionID)
-						}
-						_, _ = fmt.Fprintln(sw)
-						break nonInteractiveConnect
-					}
-				}
-				fmt.Fprintln(os.Stderr, color.Error(fmt.Sprintf("✗ Connection error: %v", err)))
-				os.Exit(1)
-			case <-connectTimeout:
-				fmt.Fprintln(os.Stderr, color.Error("✗ Connection timed out after 30s"))
-				cancel()
-				os.Exit(1)
-			}
-		}
-	}
-
-	// Now send the message (after stream is connected)
-	if err := client.SendMessage(state.SessionID, question, "", ""); err != nil {
-		fmt.Fprintln(os.Stderr, color.Error(fmt.Sprintf("✗ Failed to send message: %v", err)))
-		cancel()
-		os.Exit(1)
-	}
-
-	// Continue reading stream for response
-	if isTTYOutput() {
-		fmt.Println()
-	}
-	streamResponseWithTimeout(events, streamErrors, cancel, askTimeoutFlag)
-
-	state.LastMessageAt = time.Now()
-	truncated := truncateQuestion(question, 80)
-	if state.FirstQuestion == "" {
-		state.FirstQuestion = truncated
-	}
-	state.LastQuestion = truncated
-	_ = session.Save(state)
-
-	// Show view URL — goes to stderr when stdout is captured so it doesn't
-	// pollute the captured answer.
-	_, _ = fmt.Fprintln(sw)
-	_, _ = fmt.Fprintf(sw, "View: %s\n", color.URL(state.URL))
-}
-
-// getHistoryFilePath returns the path to the command history file
-func getHistoryFilePath() string {
-	configDir, err := config.GetConfigDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(configDir, "history")
-}
-
 func printSessionBanner(cfg *config.Config, state *session.State) {
 	if cfg.TeamName != "" {
 		fmt.Printf("Endpoint: %s | Team: %s | Session: %s\n", color.Info(cfg.Endpoint), color.Info(cfg.TeamName), color.SessionID(state.SessionID))
 	} else {
 		fmt.Printf("Endpoint: %s | Session: %s\n", color.Info(cfg.Endpoint), color.SessionID(state.SessionID))
-	}
-}
-
-func runInteractiveAsk(cfg *config.Config, profile string, preState *session.State) {
-	_, span := telemetry.StartSpan(context.Background(), "dx.ask",
-		attribute.String("mode", "interactive"),
-		attribute.String("profile", profile),
-	)
-	defer span.End()
-
-	client := api.NewClient(cfg)
-
-	state, _ := ensureSession(client, profile, preState, os.Stdout)
-
-	printSessionBanner(cfg, state)
-	fmt.Printf("%s\n", color.Muted("Type your questions. Use /help for commands. Press Ctrl+D to exit."))
-	fmt.Println()
-
-	// Set up liner for line editing and history
-	line := liner.NewLiner()
-	defer func() { _ = line.Close() }()
-
-	line.SetCtrlCAborts(true)
-	line.SetWordCompleter(slashCompleter)
-	line.SetTabCompletionStyle(liner.TabPrints)
-
-	// Load history
-	historyPath := getHistoryFilePath()
-	if historyPath != "" {
-		if f, err := os.Open(historyPath); err == nil {
-			_, _ = line.ReadHistory(f)
-			_ = f.Close()
-		}
-	}
-
-	// Save history on exit
-	defer func() {
-		if historyPath != "" {
-			if f, err := os.Create(historyPath); err == nil {
-				_, _ = line.WriteHistory(f)
-				_ = f.Close()
-			}
-		}
-	}()
-
-	for {
-		question, err := line.Prompt("dx> ")
-		if err != nil {
-			if err == liner.ErrPromptAborted {
-				fmt.Println()
-				fmt.Println("Interrupted. Type 'exit' or press Ctrl+D to quit.")
-				continue
-			}
-			if err == io.EOF {
-				fmt.Println()
-				break
-			}
-			fmt.Fprintf(os.Stderr, "Error reading input: %v\n", err)
-			continue
-		}
-
-		question = strings.TrimSpace(question)
-		if question == "" {
-			continue
-		}
-
-		// Add to history
-		line.AppendHistory(question)
-
-		// Handle special commands
-		if question == "exit" || question == "quit" {
-			break
-		}
-
-		if strings.HasPrefix(question, "/") {
-			if newState := handleSlashCommand(question, cfg, state, profile, line); newState != nil {
-				state = newState
-				printSessionBanner(cfg, state)
-				fmt.Println()
-			}
-			continue
-		}
-
-		// Start streaming BEFORE sending message to avoid race condition.
-		// If the session is unavailable (404/403/410), auto-recover once.
-		var events <-chan stream.Event
-		var streamErrors <-chan error
-		var cancel func()
-		connected := false
-		recoveryAttempted := false
-
-	connectAttempt:
-		for !connected {
-			events, streamErrors, cancel = stream.StreamResponse(cfg.Endpoint, state.SessionID, cfg.GetAuthToken(), cfg.TeamID)
-			connectTimeout := time.After(30 * time.Second)
-
-		connectLoop:
-			for {
-				select {
-				case event, ok := <-events:
-					if !ok {
-						fmt.Fprintln(os.Stderr, color.Error("✗ Connection lost"))
-						cancel()
-						break connectAttempt
-					}
-					if event.Type == "connected" {
-						connected = true
-						break connectLoop
-					}
-				case err := <-streamErrors:
-					cancel()
-					var sessionErr *stream.SessionUnavailableError
-					if errors.As(err, &sessionErr) && !recoveryAttempted {
-						recoveryAttempted = true
-						newState := recoverSession(client, profile, os.Stdout)
-						if newState != nil {
-							state = newState
-							printSessionBanner(cfg, state)
-							continue connectAttempt
-						}
-					}
-					fmt.Fprintln(os.Stderr, color.Error(fmt.Sprintf("✗ Error: %v", err)))
-					break connectAttempt
-				case <-connectTimeout:
-					fmt.Fprintln(os.Stderr, color.Error("✗ Connection timed out"))
-					cancel()
-					break connectAttempt
-				}
-			}
-		}
-		if !connected {
-			continue
-		}
-
-		// Now send the message (after stream is connected)
-		if err := client.SendMessage(state.SessionID, question, "", ""); err != nil {
-			fmt.Fprintln(os.Stderr, color.Error(fmt.Sprintf("✗ Failed: %v", err)))
-			cancel()
-			continue
-		}
-
-		// Continue reading stream for response
-		fmt.Println()
-		streamResponseWithTimeout(events, streamErrors, cancel, askTimeoutFlag)
-		fmt.Println()
-
-		state.LastMessageAt = time.Now()
-		truncated := truncateQuestion(question, 80)
-		if state.FirstQuestion == "" {
-			state.FirstQuestion = truncated
-		}
-		state.LastQuestion = truncated
-		_ = session.Save(state)
 	}
 }
 
@@ -536,7 +207,6 @@ func isTTYOutput() bool {
 
 // statusWriter returns os.Stderr when stdout is not a TTY so that infrastructure
 // messages (session creation, role, view URL) do not pollute captured output.
-// When stdout is a TTY, messages go to stdout as usual.
 func statusWriter() *os.File {
 	if isTTYOutput() {
 		return os.Stdout
@@ -564,16 +234,28 @@ func streamResponseWithTimeout(events <-chan stream.Event, errors <-chan error, 
 		defer timer.Stop()
 	}
 
+	const idleTimeoutSecs = 60
+	idleTimer := time.NewTimer(time.Duration(idleTimeoutSecs) * time.Second)
+	defer idleTimer.Stop()
+
 	for {
 		select {
 		case <-timeoutCh:
 			fmt.Fprintln(os.Stderr, color.Error(fmt.Sprintf("\n✗ Timeout: response not completed within %d seconds", timeoutSecs)))
 			return
+		case <-idleTimer.C:
+			if outputState.answerStarted {
+				outputState.stopSpinner()
+				fmt.Fprintln(os.Stderr)
+				return
+			}
+			idleTimer.Reset(time.Duration(idleTimeoutSecs) * time.Second)
 		case event, ok := <-events:
 			if !ok {
 				outputState.stopSpinner()
 				return
 			}
+			idleTimer.Reset(time.Duration(idleTimeoutSecs) * time.Second)
 
 			switch event.Type {
 			case stream.EventConnected:
@@ -664,12 +346,11 @@ type OutputState struct {
 	lastToolCallID string
 	isTTY          bool
 	lastStats      *stream.AgentStats
-	statsLineLen   int // length of the last printed stats line (for \r overwrite)
+	statsLineLen   int
 	answerBuffer   strings.Builder
 	spinner        interface{ Stop() }
 }
 
-// stopSpinner stops the thinking spinner if active.
 func (s *OutputState) stopSpinner() {
 	if s.spinner != nil {
 		s.spinner.Stop()
@@ -677,14 +358,12 @@ func (s *OutputState) stopSpinner() {
 	}
 }
 
-// printStatsLine prints a compact stats line, overwriting the previous one on TTYs.
 func (s *OutputState) printStatsLine(stats *stream.AgentStats) {
 	if !s.isTTY {
 		return
 	}
 
 	line := formatStatsBar(stats)
-	// Overwrite previous stats line
 	if s.statsLineLen > 0 {
 		fmt.Printf("\r%s\r", strings.Repeat(" ", s.statsLineLen))
 	}
@@ -692,7 +371,6 @@ func (s *OutputState) printStatsLine(stats *stream.AgentStats) {
 	s.statsLineLen = visibleLen(line)
 }
 
-// clearStatsLine clears the in-place stats line so other output can print cleanly.
 func (s *OutputState) clearStatsLine() {
 	if s.statsLineLen > 0 && s.isTTY {
 		fmt.Printf("\r%s\r", strings.Repeat(" ", s.statsLineLen))
@@ -700,7 +378,6 @@ func (s *OutputState) clearStatsLine() {
 	}
 }
 
-// printFinalStats prints a permanent stats summary line before the answer.
 func (s *OutputState) printFinalStats() {
 	if s.lastStats == nil {
 		return
@@ -709,7 +386,6 @@ func (s *OutputState) printFinalStats() {
 	fmt.Println(line)
 }
 
-// formatStatsBar builds the compact stats summary string.
 func formatStatsBar(stats *stream.AgentStats) string {
 	var parts []string
 
@@ -741,7 +417,6 @@ func formatStatsBar(stats *stream.AgentStats) string {
 	return line
 }
 
-// visibleLen approximates the visible width of a string by stripping ANSI escapes.
 func visibleLen(s string) int {
 	inEscape := false
 	n := 0
@@ -761,7 +436,6 @@ func visibleLen(s string) int {
 	return n
 }
 
-// ToolCall represents a tool call message from the AI
 type ToolCall struct {
 	Command     string `json:"command"`
 	StepID      int    `json:"step_id"`
@@ -771,7 +445,6 @@ type ToolCall struct {
 	AssistantID string `json:"assistant_id"`
 }
 
-// ToolOutput represents a tool output message
 type ToolOutput struct {
 	ToolCallID    string `json:"tool_call_id"`
 	ToolStatus    bool   `json:"tool_status"`
@@ -782,69 +455,54 @@ type ToolOutput struct {
 	AssistantID   string `json:"assistant_id"`
 }
 
-// formatProgressMessage parses and formats a progress message with colors
 func formatProgressMessage(message string, state *OutputState) {
 	message = strings.TrimSpace(message)
 	state.hadProgress = true
 
-	// Check if it's a JSON object
 	if strings.HasPrefix(message, "{") {
-		// Try parsing as tool call
 		var toolCall ToolCall
 		if err := json.Unmarshal([]byte(message), &toolCall); err == nil && toolCall.MessageType == "tool_call" {
 			formatToolCall(&toolCall, state)
 			return
 		}
 
-		// Try parsing as tool output
 		var toolOutput ToolOutput
 		if err := json.Unmarshal([]byte(message), &toolOutput); err == nil && toolOutput.MessageType == "tool_output" {
 			formatToolOutput(&toolOutput, state)
 			return
 		}
 
-		// Unknown JSON, skip
 		return
 	}
 
-	// Plain text - treat as task/thinking indicator
 	formatTaskTitle(message, state)
 }
 
-// formatTaskTitle formats a task title (thinking/planning step)
 func formatTaskTitle(title string, state *OutputState) {
-	// Skip duplicate titles
 	if title == state.lastTaskTitle {
 		return
 	}
 	state.lastTaskTitle = title
 
-	// Close any open tool block
 	if state.inToolBlock {
 		state.inToolBlock = false
 	}
 
-	// Print the task title with a thinking indicator
 	fmt.Printf("%s %s\n", color.Progress("●"), color.Title(title))
 }
 
-// formatToolCall formats a tool call (command execution)
 func formatToolCall(tc *ToolCall, state *OutputState) {
 	state.lastToolCallID = tc.ToolCallID
 	state.inToolBlock = true
 
-	// Format based on tool type
 	switch tc.ToolName {
 	case "bash":
-		// Show bash command with shell prompt style
 		fmt.Printf("  %s %s\n", color.Muted("$"), color.Command(tc.Command))
 	default:
-		// Generic tool call
 		fmt.Printf("  %s %s\n", color.ToolName(tc.ToolName+":"), color.Command(tc.Command))
 	}
 }
 
-// formatToolOutput formats tool output (command result)
 func formatToolOutput(to *ToolOutput, state *OutputState) {
 	output := strings.TrimSpace(to.ToolOutput)
 
@@ -852,19 +510,14 @@ func formatToolOutput(to *ToolOutput, state *OutputState) {
 		return
 	}
 
-	// Format the output with proper indentation
 	lines := strings.Split(output, "\n")
 
-	// Limit output lines for readability (show first 10 and last 5 if too long)
 	maxLines := 15
 	if len(lines) > maxLines {
-		// Show first 8 lines
 		for i := 0; i < 8; i++ {
 			fmt.Printf("    %s\n", color.ToolOutput(lines[i]))
 		}
-		// Show truncation indicator
 		fmt.Printf("    %s\n", color.Muted(fmt.Sprintf("... (%d lines hidden) ...", len(lines)-13)))
-		// Show last 5 lines
 		for i := len(lines) - 5; i < len(lines); i++ {
 			fmt.Printf("    %s\n", color.ToolOutput(lines[i]))
 		}
@@ -874,7 +527,6 @@ func formatToolOutput(to *ToolOutput, state *OutputState) {
 		}
 	}
 
-	// Show execution metadata
 	if to.ExecutionTime != "" || !to.ToolStatus {
 		var meta []string
 		if to.ExecutionTime != "" {
@@ -945,69 +597,13 @@ func slashCompleter(line string, pos int) (string, []string, string) {
 	return cmdPrefix, candidates, line[pos:]
 }
 
-func handleSlashCommand(input string, cfg *config.Config, state *session.State, profile string, line *liner.State) *session.State {
-	parts := strings.Fields(input)
-	cmd := parts[0]
-
-	switch cmd {
-	case "/upload":
-		fmt.Println(color.Muted("File upload is not yet available. Use piped input instead:"))
-		fmt.Println(color.Muted("  cat <file> | dx ask \"analyze this\""))
-
-	case "/new":
-		fmt.Println("Creating session...")
-		client := api.NewClient(cfg)
-		resp, err := client.CreateSession(&api.SessionRequest{Mode: "ask"})
-		if err != nil {
-			fmt.Printf("%s Failed to create session: %v\n", color.Error("✗"), err)
-			return nil
-		}
-		newState := &session.State{
-			SessionID: resp.SessionID,
-			Profile:   profile,
-			URL:       resp.URL,
-			CreatedAt: time.Now(),
-		}
-		_ = session.Save(newState)
-		_ = session.SetCurrentSessionID(newState.SessionID, profile)
-		return newState
-
-	case "/resume":
-		return handleResume(cfg, state, profile, line)
-
-	case "/help":
-		fmt.Println()
-		fmt.Println("  Available commands:")
-		helpItems := []struct{ cmd, desc string }{
-			{"/new", "Start a fresh session"},
-			{"/resume", "Switch to a previous session"},
-			{"/help", "Show this help"},
-			{"exit", "End the session"},
-		}
-		const colWidth = 18
-		for _, h := range helpItems {
-			pad := colWidth - len(h.cmd)
-			if pad < 2 {
-				pad = 2
-			}
-			fmt.Printf("    %s%s%s\n", color.Command(h.cmd), strings.Repeat(" ", pad), h.desc)
-		}
-		fmt.Println()
-
-	default:
-		fmt.Printf("%s Unknown command: %s (type /help for available commands)\n", color.Error("✗"), cmd)
-	}
-	return nil
-}
-
-func handleResume(cfg *config.Config, currentState *session.State, profile string, line *liner.State) *session.State {
+func handleResume(cfg *config.Config, currentState *session.State, profile string, line interface{ Prompt(string) (string, error) }) *session.State {
 	sessions, err := session.ListForProfile(profile)
 	if err != nil || len(sessions) == 0 {
 		fmt.Println(color.Muted("  No previous sessions found."))
 		return nil
 	}
 
-	// Sort by last activity, most recent first
 	sort.Slice(sessions, func(i, j int) bool {
 		ti := sessions[i].LastMessageAt
 		if ti.IsZero() {
@@ -1020,7 +616,6 @@ func handleResume(cfg *config.Config, currentState *session.State, profile strin
 		return ti.After(tj)
 	})
 
-	// Filter out the current session and limit to 10
 	var candidates []*session.State
 	for _, s := range sessions {
 		if s.SessionID == currentState.SessionID {
@@ -1104,7 +699,6 @@ func truncateQuestion(q string, maxLen int) string {
 	return q
 }
 
-// formatProgressReport formats a progress report with a left border.
 func formatProgressReport(report string, state *OutputState) {
 	report = strings.TrimSpace(report)
 	if report == "" {
@@ -1118,4 +712,13 @@ func formatProgressReport(report string, state *OutputState) {
 		fmt.Printf("  %s %s\n", color.ProgressBorder(), color.ProgressReport(line))
 	}
 	fmt.Println()
+}
+
+// getHistoryFilePath returns the path to the command history file
+func getHistoryFilePath() string {
+	configDir, err := config.GetConfigDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(configDir, "history")
 }
