@@ -2,10 +2,17 @@
 
 CLI for Deductive AI -- ask questions about your infrastructure from the terminal.
 
-Use when the user asks to investigate, debug, query, or monitor infrastructure --
+Use when the user asks to query, monitor, investigate, or debug infrastructure --
 health checks, error analysis, log inspection, resource usage, deployment status,
 or any operational question about services, pods, databases, or cloud resources.
 Also use when piping CLI output (kubectl, docker, ps, netstat, etc.) for AI analysis.
+
+## When to use ask vs investigate
+
+- **`dx ask`** -- quick answers where follow-ups are expected. Use for iterative exploration: status checks, metrics, listing resources, or any question where you plan to refine based on the response. Auto-resumes sessions.
+- **`dx investigate`** -- detailed root cause analysis that goes deep. Use when the first answer needs to be comprehensive: incident debugging, error spikes, OOM kills, performance regressions. The AI explores more paths, uses more tools, and produces thorough analysis upfront.
+
+Rule of thumb: need a quick answer you'll build on? `dx ask`. Need the full picture in one shot? `dx investigate`.
 
 ## Install
 
@@ -71,6 +78,36 @@ dx ask --timeout 60 "long analysis"
 | `/resume` | List recent sessions and switch to one |
 | `/help` | Show available commands |
 | `exit` | End the session |
+
+### dx investigate [question]
+
+Deep root cause analysis. Sends a question to Deductive and streams a thorough investigation. Each invocation starts a fresh session (no auto-resume). Use `--session` to continue a previous investigation.
+
+```bash
+# Investigate an incident
+dx investigate "why is the payments service returning 500s?"
+
+# Pipe logs for deep analysis
+kubectl logs deploy/api --tail=200 | dx investigate "root cause this error spike"
+
+# Pipe metrics for analysis
+docker stats --no-stream | dx investigate "why is container X using so much memory?"
+
+# Interactive investigation (multi-turn within the same run)
+dx investigate
+
+# Resume a previous investigation
+dx investigate --session abc123 "what about the database connection pool?"
+
+# Timeout after N seconds
+dx investigate --timeout 120 "full cluster health analysis"
+```
+
+**Flags:**
+- `--session`, `-s` -- resume a specific session by ID
+- `--timeout` -- max seconds to wait for a complete response (default: 0 / unlimited)
+
+**Session behavior:** each `dx investigate` invocation creates a fresh session. Follow-up questions work within the same run, but the session is not saved for future runs. Use `--session` to explicitly re-attach to a previous investigation.
 
 ### dx setup
 
@@ -166,6 +203,24 @@ docker stats --no-stream | dx ask "which containers need attention?"
 
 ```bash
 cat ./thread-dump.txt | dx ask "analyze this thread dump for deadlocks"
+```
+
+### Investigate an incident
+
+```bash
+dx investigate "why did the API start returning 503s at 2am?"
+```
+
+### Pipe logs for deep investigation
+
+```bash
+kubectl logs deploy/payments --since=1h | dx investigate "root cause the payment failures"
+```
+
+### Resume a previous investigation
+
+```bash
+dx investigate --session abc123 "what about the database connection pool?"
 ```
 
 ## File layout

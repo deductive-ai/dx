@@ -38,11 +38,12 @@ Ask questions about your infrastructure, pipe in data, get answers.
   ps aux | dx ask "which process needs attention?"
 
 Commands:
-  ask      Ask a question (default when you just type dx)
-  setup    Configure endpoint, auth, and skills
-  info     Show status, version, and diagnostics
-  upgrade  Update to the latest version
-  team     List and switch teams`,
+  ask          Ask a question (default when you just type dx)
+  investigate  Deep root cause analysis
+  setup        Configure endpoint, auth, and skills
+  info         Show status, version, and diagnostics
+  upgrade      Update to the latest version
+  team         List and switch teams`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		profileExplicit = cmd.Flags().Changed("profile")
 		if noColorFlag {

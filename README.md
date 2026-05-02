@@ -40,6 +40,26 @@ kubectl get pods -A | dx ask "which pods are in trouble?"
 dx
 ```
 
+### Investigating incidents
+
+```bash
+# Deep root cause analysis
+dx investigate "why is the payments service returning 500s?"
+
+# Pipe logs for thorough analysis
+kubectl logs deploy/api --tail=200 | dx investigate "root cause this error spike"
+
+# Interactive investigation
+dx investigate
+```
+
+### When to use ask vs investigate
+
+- **`dx ask`** — quick answers where you expect follow-ups. Good for iterative exploration: ask a question, get a response, refine with follow-ups. Sessions auto-resume so conversation flows naturally.
+- **`dx investigate`** — detailed root cause analysis that goes deep. Use when the first answer needs to be comprehensive. The AI explores more paths, uses more tools, and produces a thorough analysis upfront.
+
+Need a quick answer you'll build on? `dx ask`. Need the full picture in one shot? `dx investigate`.
+
 ### Example session
 
 ```
@@ -64,6 +84,7 @@ dx> what's the p99 latency on the payments service?
 |---------|-------------|
 | `dx` | Start an interactive session (same as `dx ask`) |
 | `dx ask` | Ask Deductive a question (setup on first use) |
+| `dx investigate` | Deep root cause analysis |
 | `dx setup` | Configure endpoint, auth, and skills |
 | `dx info` | Show status, version, and diagnostics |
 | `dx upgrade` | Upgrade to the latest version |
