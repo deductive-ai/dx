@@ -93,9 +93,7 @@ func runStatus(cmd *cobra.Command, args []string) {
 			}
 		case "apikey":
 			fmt.Printf("  Method: API Key\n")
-			if len(cfg.APIKey) > 12 {
-				fmt.Printf("  Key: %s...%s\n", cfg.APIKey[:8], cfg.APIKey[len(cfg.APIKey)-4:])
-			}
+			fmt.Printf("  Key: %s\n", color.Success("configured"))
 		}
 	} else {
 		fmt.Printf("  Status: %s\n", color.Error("✗ Not authenticated"))
