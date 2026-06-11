@@ -174,6 +174,81 @@ func TestAPIKeyEncryption_OnDisk(t *testing.T) {
 	}
 }
 
+func TestOAuthTokensEncryption_OnDisk(t *testing.T) {
+	home := setTestHome(t)
+
+	cfg := &Config{
+		Endpoint:          "https://example.com",
+		AuthMethod:        "oauth",
+		OAuthAccessToken:  "access-token-123",
+		OAuthRefreshToken: "refresh-token-456",
+		OAuthExpiresAt:    time.Now().Add(time.Hour),
+	}
+
+	if err := Save(cfg, "default"); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	configPath := filepath.Join(home, ConfigDirName, ProfilesDirName, "default", ConfigFileName)
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error: %v", err)
+	}
+
+	contents := string(data)
+	if containsSubstring(contents, "access-token-123") {
+		t.Error("config file contains plaintext OAuth access token")
+	}
+	if containsSubstring(contents, "refresh-token-456") {
+		t.Error("config file contains plaintext OAuth refresh token")
+	}
+	if !containsSubstring(contents, "encrypted_oauth_access_token") {
+		t.Error("config file does not contain encrypted_oauth_access_token field")
+	}
+	if !containsSubstring(contents, "encrypted_oauth_refresh_token") {
+		t.Error("config file does not contain encrypted_oauth_refresh_token field")
+	}
+
+	loaded, err := Load("default")
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if loaded.OAuthAccessToken != "access-token-123" {
+		t.Errorf("OAuthAccessToken = %q, want %q", loaded.OAuthAccessToken, "access-token-123")
+	}
+	if loaded.OAuthRefreshToken != "refresh-token-456" {
+		t.Errorf("OAuthRefreshToken = %q, want %q", loaded.OAuthRefreshToken, "refresh-token-456")
+	}
+}
+
+func TestLoad_LegacyPlaintextOAuthTokens(t *testing.T) {
+	home := setTestHome(t)
+	if err := EnsureProfileDir("default"); err != nil {
+		t.Fatalf("EnsureProfileDir() error: %v", err)
+	}
+
+	configPath := filepath.Join(home, ConfigDirName, ProfilesDirName, "default", ConfigFileName)
+	legacyConfig := []byte(`endpoint = "https://example.com"
+auth_method = "oauth"
+oauth_access_token = "legacy-access-token"
+oauth_refresh_token = "legacy-refresh-token"
+`)
+	if err := os.WriteFile(configPath, legacyConfig, 0600); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	loaded, err := Load("default")
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if loaded.OAuthAccessToken != "legacy-access-token" {
+		t.Errorf("OAuthAccessToken = %q, want %q", loaded.OAuthAccessToken, "legacy-access-token")
+	}
+	if loaded.OAuthRefreshToken != "legacy-refresh-token" {
+		t.Errorf("OAuthRefreshToken = %q, want %q", loaded.OAuthRefreshToken, "legacy-refresh-token")
+	}
+}
+
 func containsSubstring(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && findSubstring(s, substr))
 }

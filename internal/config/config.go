@@ -46,15 +46,17 @@ const (
 
 // Config represents a profile's configuration stored in ~/.dx/profiles/<profile>/config
 type Config struct {
-	Endpoint          string    `toml:"endpoint"`
-	AuthMethod        string    `toml:"auth_method,omitempty"`
-	OAuthAccessToken  string    `toml:"oauth_access_token,omitempty"`
-	OAuthRefreshToken string    `toml:"oauth_refresh_token,omitempty"`
-	OAuthExpiresAt    time.Time `toml:"oauth_expires_at,omitempty"`
-	APIKey            string    `toml:"api_key,omitempty"`
-	EncryptedAPIKey   string    `toml:"encrypted_api_key,omitempty"`
-	TeamID            string    `toml:"team_id,omitempty"`
-	TeamName          string    `toml:"team_name,omitempty"`
+	Endpoint                   string    `toml:"endpoint"`
+	AuthMethod                 string    `toml:"auth_method,omitempty"`
+	OAuthAccessToken           string    `toml:"oauth_access_token,omitempty"`
+	OAuthRefreshToken          string    `toml:"oauth_refresh_token,omitempty"`
+	EncryptedOAuthAccessToken  string    `toml:"encrypted_oauth_access_token,omitempty"`
+	EncryptedOAuthRefreshToken string    `toml:"encrypted_oauth_refresh_token,omitempty"`
+	OAuthExpiresAt             time.Time `toml:"oauth_expires_at,omitempty"`
+	APIKey                     string    `toml:"api_key,omitempty"`
+	EncryptedAPIKey            string    `toml:"encrypted_api_key,omitempty"`
+	TeamID                     string    `toml:"team_id,omitempty"`
+	TeamName                   string    `toml:"team_name,omitempty"`
 }
 
 // Auth represents authentication configuration
@@ -162,7 +164,7 @@ func WriteActiveProfile(profile string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(configDir, ActiveProfileFile), []byte(profile+"\n"), 0644)
+	return os.WriteFile(filepath.Join(configDir, ActiveProfileFile), []byte(profile+"\n"), 0600)
 }
 
 // EnsureConfigDir creates the config directory structure if it doesn't exist
@@ -237,6 +239,20 @@ func Load(profile string) (*Config, error) {
 		}
 		cfg.APIKey = decrypted
 	}
+	if cfg.EncryptedOAuthAccessToken != "" {
+		decrypted, err := crypto.Decrypt(cfg.EncryptedOAuthAccessToken)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt OAuth access token: %w", err)
+		}
+		cfg.OAuthAccessToken = decrypted
+	}
+	if cfg.EncryptedOAuthRefreshToken != "" {
+		decrypted, err := crypto.Decrypt(cfg.EncryptedOAuthRefreshToken)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt OAuth refresh token: %w", err)
+		}
+		cfg.OAuthRefreshToken = decrypted
+	}
 
 	return &cfg, nil
 }
@@ -253,6 +269,8 @@ func Save(cfg *Config, profile string) error {
 	}
 
 	originalAPIKey := cfg.APIKey
+	originalOAuthAccessToken := cfg.OAuthAccessToken
+	originalOAuthRefreshToken := cfg.OAuthRefreshToken
 	if cfg.APIKey != "" {
 		encrypted, err := crypto.Encrypt(cfg.APIKey)
 		if err != nil {
@@ -263,7 +281,31 @@ func Save(cfg *Config, profile string) error {
 	} else {
 		cfg.EncryptedAPIKey = ""
 	}
-	defer func() { cfg.APIKey = originalAPIKey }()
+	if cfg.OAuthAccessToken != "" {
+		encrypted, err := crypto.Encrypt(cfg.OAuthAccessToken)
+		if err != nil {
+			return fmt.Errorf("failed to encrypt OAuth access token: %w", err)
+		}
+		cfg.EncryptedOAuthAccessToken = encrypted
+		cfg.OAuthAccessToken = ""
+	} else {
+		cfg.EncryptedOAuthAccessToken = ""
+	}
+	if cfg.OAuthRefreshToken != "" {
+		encrypted, err := crypto.Encrypt(cfg.OAuthRefreshToken)
+		if err != nil {
+			return fmt.Errorf("failed to encrypt OAuth refresh token: %w", err)
+		}
+		cfg.EncryptedOAuthRefreshToken = encrypted
+		cfg.OAuthRefreshToken = ""
+	} else {
+		cfg.EncryptedOAuthRefreshToken = ""
+	}
+	defer func() {
+		cfg.APIKey = originalAPIKey
+		cfg.OAuthAccessToken = originalOAuthAccessToken
+		cfg.OAuthRefreshToken = originalOAuthRefreshToken
+	}()
 
 	var buf bytes.Buffer
 	encoder := toml.NewEncoder(&buf)
@@ -372,7 +414,6 @@ func ListProfiles() ([]string, error) {
 
 	return profiles, nil
 }
-
 
 // Deprecated compatibility functions - these are kept for backward compatibility
 // but delegate to the new profile-based system using the default profile

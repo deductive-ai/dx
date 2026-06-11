@@ -18,7 +18,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const githubRepo = "deductive-ai/dx"
+const (
+	githubRepo     = "deductive-ai/dx"
+	maxBinaryBytes = 128 * 1024 * 1024
+	binaryFileMode = 0755
+)
 
 var upgradeCmd = &cobra.Command{
 	Use:   "upgrade",
@@ -165,13 +169,22 @@ func downloadAndExtract(url, destBinary string) error {
 		}
 
 		if filepath.Base(hdr.Name) == "dx" && hdr.Typeflag == tar.TypeReg {
-			out, err := os.OpenFile(destBinary, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+			if hdr.Size > maxBinaryBytes {
+				return fmt.Errorf("archive binary is too large: %d bytes", hdr.Size)
+			}
+
+			out, err := os.OpenFile(destBinary, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, binaryFileMode)
 			if err != nil {
 				return fmt.Errorf("failed to create binary: %w", err)
 			}
-			if _, err := io.Copy(out, tr); err != nil {
+			written, err := io.Copy(out, io.LimitReader(tr, maxBinaryBytes+1))
+			if err != nil {
 				_ = out.Close()
 				return fmt.Errorf("failed to write binary: %w", err)
+			}
+			if written > maxBinaryBytes {
+				_ = out.Close()
+				return fmt.Errorf("archive binary exceeds maximum size of %d bytes", maxBinaryBytes)
 			}
 			_ = out.Close()
 			return nil
@@ -194,7 +207,7 @@ func replaceBinary(newPath, currentPath string) error {
 	}
 	defer func() { _ = src.Close() }()
 
-	dst, err := os.OpenFile(currentPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+	dst, err := os.OpenFile(currentPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, binaryFileMode)
 	if err != nil {
 		return trySudoMove(newPath, currentPath)
 	}
@@ -211,6 +224,8 @@ func trySudoMove(newPath, currentPath string) error {
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+	return os.Chmod(currentPath, binaryFileMode)
 }
-
